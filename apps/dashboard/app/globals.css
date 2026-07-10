@@ -1,3 +1,68 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #0b0f14;
+  color: #e8edf2;
+}
+
+body {
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Field-fill flash — the money shot when an extractor event fills a slot. */
+@keyframes fillflash {
+  0% {
+    background-color: rgba(61, 220, 132, 0.16);
+    border-color: #3ddc84;
+  }
+  100% {
+    background-color: transparent;
+    border-color: #1e2630;
+  }
+}
+.fill-flash {
+  animation: fillflash 0.32s ease-out;
+}
+
+/* Live status dot pulse — the only ambient motion. */
+@keyframes livepulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-pulse {
+  animation: livepulse 1.4s ease-in-out infinite;
+}
+
+/* Feed / stepper transitions are handled by Tailwind `transition`. */
+@media (prefers-reduced-motion: reduce) {
+  .fill-flash,
+  .live-pulse {
+    animation: none !important;
+  }
+}
+
+/* Thin console scrollbars. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e2630;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

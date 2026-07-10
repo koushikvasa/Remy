@@ -187,6 +187,8 @@ async function decideTurn(session: Session): Promise<TurnResult> {
       decision: decision.decision,
       reason_code: decision.reason_code,
       all_green: fit.all_green,
+      // PHI-safe (initial + age only); the dashboard shows it under the banner.
+      spoken_reason: decision.spoken_reason,
     },
   });
 
