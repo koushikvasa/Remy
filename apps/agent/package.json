@@ -1,0 +1,25 @@
+{
+  "name": "@remy/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/websocket": "^11.0.1",
+    "@remy/shared": "workspace:*",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "openai": "^4.67.3",
+    "tsx": "^4.19.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "typescript": "^5.5.4"
+  }
+}
