@@ -68,6 +68,11 @@ async function main(): Promise<void> {
     const res = await handleTurn(session, text);
     console.log(`\nRemy> ${res.reply}`);
     printDraft(session.draft);
+    if (session.decision) {
+      console.log(
+        `   decision: ${session.decision.decision.toUpperCase()} / ${session.decision.reason_code}`
+      );
+    }
     console.log(
       `   [stage ${session.stage} · conf ${session.lastConfidence.toFixed(2)}${
         res.escalated ? " · ESCALATED" : ""

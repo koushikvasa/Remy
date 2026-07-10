@@ -1,4 +1,4 @@
-import { ReferralDraft } from "@remy/shared";
+import { Decision, FitResult, ReferralDraft } from "@remy/shared";
 import { createRun, logEvent } from "./telemetry";
 
 /**
@@ -22,6 +22,12 @@ export interface Session {
   messages: { role: "user" | "assistant"; content: string }[];
   lastConfidence: number;
   finalized: boolean;
+  // DECIDING / CLOSING state (P3)
+  fit: FitResult | null;
+  decision: Decision | null;
+  payerMatchedId: string | null;
+  awaitingCallback: boolean;
+  callbackPhone: string | null;
 }
 
 // GREETING is delivered via TwiML welcomeGreeting on a real call; the simulator
@@ -68,5 +74,10 @@ export async function startSession(input: StartSessionInput): Promise<Session> {
     messages: [{ role: "assistant", content: GREETING }],
     lastConfidence: 0,
     finalized: false,
+    fit: null,
+    decision: null,
+    payerMatchedId: null,
+    awaitingCallback: false,
+    callbackPhone: null,
   };
 }

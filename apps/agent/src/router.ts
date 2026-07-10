@@ -9,14 +9,19 @@ import {
   readback,
   ESCALATION_LINE,
 } from "./agents/responder";
+import { runFitCheck } from "./agents/fitchecker";
+import { decide, wordDecision } from "./agents/decider";
+import { writeReferral } from "./referrals";
 import { logEvent, finalizeRun } from "./telemetry";
 
 /**
  * router.ts — the per-call stage machine (REMY_SPEC.md §7).
  *
- * P2 implements GREETING → COLLECTING → READBACK. On a confirmed readback the
- * stage advances to DECIDING, which P3 (fitchecker + decider gate) will own; for
- * now the run is marked completed after a successful readback.
+ * GREETING → COLLECTING → READBACK → DECIDING → CLOSING. On a confirmed readback
+ * the FitChecker runs the three tools, the deterministic decide() gate produces
+ * the decision, and a referrals row is written on close:
+ *   - accept  → confirm, write referrals(accepted), run completed
+ *   - escalate → capture a callback number, write referrals(escalated), run escalated
  *
  * Every turn is wrapped so a model failure never leaves dead air (rule 5): the
  * caller hears the static escalation line and the run is marked failed.
@@ -54,8 +59,10 @@ export async function handleTurn(
         return await collectTurn(session, userText);
       case "READBACK":
         return await readbackTurn(session, userText);
+      case "CLOSING":
+        return await closingTurn(session, userText);
       default:
-        // DECIDING / CLOSING are terminal for P2.
+        // DECIDING is transient (resolved within the confirming turn).
         return { reply: "Thanks — we're all set here.", done: true };
     }
   } catch (err) {
@@ -124,7 +131,7 @@ async function readbackTurn(
   const yes = AFFIRMATIVE.test(userText);
   const no = NEGATIVE.test(userText);
 
-  // Confirmed → advance to DECIDING (owned by P3). For P2, complete the run.
+  // Confirmed → run the decision gate.
   if (yes && !no) {
     session.stage = "DECIDING";
     await logEvent({
@@ -133,12 +140,7 @@ async function readbackTurn(
       subAgent: "system",
       payload: { event: "readback_confirmed" },
     });
-    const reply =
-      "Perfect — I've got the full referral. Next I'll check it against our service area, payers, and capacity.";
-    session.messages.push({ role: "assistant", content: reply });
-    await finalizeRun(session.runId, "completed");
-    session.finalized = true;
-    return { reply, done: true };
+    return await decideTurn(session);
   }
 
   // Rejected → back to COLLECTING to capture the correction.
@@ -159,6 +161,78 @@ async function readbackTurn(
   const reply = confirmPrompt();
   session.messages.push({ role: "assistant", content: reply });
   return { reply, done: false };
+}
+
+async function decideTurn(session: Session): Promise<TurnResult> {
+  const t0 = Date.now();
+
+  // FitChecker: three DB tools → FitResult. Deterministic decide() gate.
+  const { fit, payerMatchedId } = await runFitCheck(session.draft, session.runId);
+  session.fit = fit;
+  session.payerMatchedId = payerMatchedId;
+
+  const gate = decide(fit, session.draft, session.lastConfidence);
+
+  // LLM only WORDS the spoken_reason; decision/reason_code are fixed by decide().
+  const decision = await wordDecision(gate, session.draft, fit);
+  session.decision = decision;
+
+  await logEvent({
+    runId: session.runId,
+    stage: "DECIDING",
+    subAgent: "decider",
+    latencyMs: Date.now() - t0,
+    confidence: session.lastConfidence,
+    payload: {
+      decision: decision.decision,
+      reason_code: decision.reason_code,
+      all_green: fit.all_green,
+    },
+  });
+
+  session.messages.push({ role: "assistant", content: decision.spoken_reason });
+
+  if (decision.decision === "accept") {
+    session.stage = "CLOSING";
+    await writeReferral(session, decision);
+    await finalizeRun(session.runId, "completed");
+    session.finalized = true;
+    return { reply: decision.spoken_reason, done: true };
+  }
+
+  // escalate / decline → capture a callback number, then write on close.
+  session.stage = "CLOSING";
+  session.awaitingCallback = true;
+  return { reply: decision.spoken_reason, done: false, escalated: true };
+}
+
+async function closingTurn(
+  session: Session,
+  userText: string
+): Promise<TurnResult> {
+  if (!session.awaitingCallback || !session.decision) {
+    return { reply: "Thanks — we're all set here.", done: true };
+  }
+
+  const digits = userText.replace(/[^\d+]/g, "");
+  session.callbackPhone = digits.length >= 7 ? digits : userText.trim();
+  session.awaitingCallback = false;
+
+  await writeReferral(session, session.decision);
+  await finalizeRun(session.runId, "escalated");
+  session.finalized = true;
+
+  await logEvent({
+    runId: session.runId,
+    stage: "CLOSING",
+    subAgent: "system",
+    payload: { event: "escalation_closed", callback_captured: true },
+  });
+
+  const reply =
+    "Thanks — I've logged everything and our coordinator will call you shortly. Take care.";
+  session.messages.push({ role: "assistant", content: reply });
+  return { reply, done: true };
 }
 
 async function escalate(session: Session, err: unknown): Promise<TurnResult> {
