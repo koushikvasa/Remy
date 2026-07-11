@@ -1,4 +1,4 @@
-const TWILIO_NUMBER = process.env.NEXT_PUBLIC_TWILIO_NUMBER ?? "+1 833 859 3215";
+const TWILIO_NUMBER = process.env.NEXT_PUBLIC_TWILIO_NUMBER ?? "+1 662 547 8393";
 
 /** Hero when no active/recent run — intentional on the projector before a call. */
 export function EmptyState() {

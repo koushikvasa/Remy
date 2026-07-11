@@ -49,6 +49,22 @@ const DONE =
 const HUMAN_REQUEST =
   /(speak|talk|connect|transfer|get) (me )?(to )?(a |an |the )?(human|person|someone|representative|rep|agent|coordinator|operator)|real person|human being/i;
 
+// Backchannel / filler tokens (case-insensitive, stretched repeats allowed).
+// An utterance made ENTIRELY of these carries no referral content.
+const FILLER_TOKEN =
+  /^(m+|h+m+|m+h+m*|hm+|mhm+|u+h+|uh|huh|okay|ok|k|mkay|yeah|yea|yep|yup|yes|right|sure|got|it|alright|cool|oh|ah|aha|so|well|um|uhm|erm|er)$/i;
+
+/** True when the whole utterance is pure backchannel (no substantive content). */
+function isPureFiller(text: string): boolean {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return true; // empty / silence
+  return tokens.every((t) => FILLER_TOKEN.test(t));
+}
+
 export async function handleTurn(
   session: Session,
   userText: string
@@ -94,12 +110,28 @@ async function collectTurn(
   session: Session,
   userText: string
 ): Promise<TurnResult> {
-  // 1. Explicit request for a human → escalate.
+  // 1. Pure backchannel ("mm-hmm", "okay", "yeah") → zero field updates, does
+  // NOT run the extractor and does NOT count toward the nonsense streak. This is
+  // the highest-probability live-call bug: fillers must never mutate the draft.
+  if (isPureFiller(userText)) {
+    session.messages.pop(); // keep filler out of the extractor context
+    const missing = missingFields(session.draft);
+    const reply = missing.length > 0 ? askForField(missing[0]!) : confirmPrompt();
+    await logEvent({
+      runId: session.runId,
+      stage: "COLLECTING",
+      subAgent: "responder",
+      payload: { kind: "filler_ignored" },
+    });
+    return { reply, done: false };
+  }
+
+  // 2. Explicit request for a human → escalate.
   if (HUMAN_REQUEST.test(userText)) {
     return escalateToHuman(session, "CALLER_REQUESTED_HUMAN");
   }
 
-  // 2. Off-script coverage question → answer from tools, then resume collection.
+  // 3. Off-script coverage question → answer from tools, then resume collection.
   const off = await answerOffscript(userText);
   if (off) {
     session.unparseableStreak = 0;
@@ -119,7 +151,7 @@ async function collectTurn(
     return { reply, done: false };
   }
 
-  // 3. Normal extraction.
+  // 4. Normal extraction.
   const t0 = Date.now();
   const out = await extract(session.draft, session.messages);
   const latencyMs = Date.now() - t0;
