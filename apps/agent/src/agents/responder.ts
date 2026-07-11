@@ -1,4 +1,5 @@
 import { ReferralDraft } from "@remy/shared";
+import { callModel } from "../model";
 
 /**
  * Responder (REMY_SPEC.md §7) — Remy's voice. She's a warm, unhurried intake
@@ -148,3 +149,126 @@ export function readback(draft: ReferralDraft): string {
 
   return `Let me make sure I've got this — ${parts.join(", ")}. Did I get all that right?`;
 }
+
+// ── Conversational responder (P7.2) ────────────────────────────────────────
+// One LLM call per non-fast-path turn: reacts to what the caller actually said
+// AND (when collecting) works the next missing field in. It NEVER decides,
+// accepts, or promises — enforced below by an acceptance guard (rule 1). On any
+// failure it returns the deterministic `fallback`, so the caller always hears
+// something (rule 5) and the critical path degrades to templates.
+
+const FIELD_LABELS: Record<keyof ReferralDraft, string> = {
+  patient_first_initial: "the patient's first initial",
+  patient_age: "the patient's age",
+  diagnosis_summary: "the main diagnosis",
+  discipline_needed: "the discipline needed (nursing, PT, OT, speech, aide, or social work)",
+  payer_raw: "the insurance",
+  zip: "the ZIP code",
+  requested_start: "the requested start date",
+};
+
+// Referral-acceptance phrasing the responder must never invent (the gate owns
+// this). Deliberately targets accepting the REFERRAL/CASE — not payer coverage
+// ("we accept Humana") or service-area coverage ("we cover that ZIP").
+const ACCEPTANCE_RE =
+  /\b(we'?re taking (this|it|the (referral|case)|them|her|him)|we'?ll take (this|it|the (referral|case|one)|them|her|him)|we can take (this|it|the (referral|case)|them|her|him)|we accept (this|it|the (referral|case)|them)|it'?s accepted|you'?re accepted|we'?ve accepted|it'?s approved|approved the referral|consider it done|it'?s a yes|good to go|we'?ve got (them|her|him) covered)\b/i;
+
+const CONVERSE_SYSTEM = `You are Remy, a warm, unhurried home-health intake coordinator on a phone call. You sound like a real person, not a form.
+Reply to what the caller just said in ONE or TWO short sentences, with contractions. Acknowledge first, then continue.
+Rules you must NEVER break:
+- You do NOT decide anything about the referral. Never say we're taking it, we accept it, it's approved, or make promises about acceptance. If the caller asks whether you'll take it, say you're still getting the details and a coordinator handles the final call.
+- If we're still COLLECTING, naturally ask for the ONE next field you're given — nothing else, and don't re-ask fields already known.
+- If a FACT is provided (a coverage or next-steps answer), weave it in accurately; never invent facts or numbers.
+- If asked whether you're a real person or an AI, be honest and warm: you're Remy, Sunrise's virtual coordinator.
+- Refer to the patient by initial and age only — never a name, never a guessed pronoun (use "them"/"the patient").
+Keep it to 1-2 short sentences, natural for speech.`;
+
+function summarizeDraft(draft: ReferralDraft): string {
+  const bits: string[] = [];
+  if (draft.patient_age !== null) bits.push(`${draft.patient_age}yo`);
+  if (draft.patient_first_initial) bits.push(`initial ${draft.patient_first_initial}`);
+  if (draft.diagnosis_summary) bits.push(draft.diagnosis_summary);
+  if (draft.discipline_needed) bits.push(disciplineWord(draft.discipline_needed));
+  if (draft.payer_raw) bits.push(draft.payer_raw);
+  if (draft.zip) bits.push(`ZIP ${draft.zip}`);
+  if (draft.requested_start) bits.push(`start ${draft.requested_start}`);
+  return bits.length ? bits.join(", ") : "nothing yet";
+}
+
+export interface ConverseOpts {
+  mode: "collecting" | "closing";
+  draft: ReferralDraft;
+  nextField: keyof ReferralDraft | null;
+  userText: string;
+  history: { role: "user" | "assistant"; content: string }[];
+  toolAnswer?: string | null;
+  decisionKind?: "accept" | "escalate" | "decline" | null;
+  referenceCode?: string | null;
+  allowAcceptance: boolean;
+  fallback: string;
+}
+
+function collectingPrompt(o: ConverseOpts): string {
+  const field = o.nextField ? FIELD_LABELS[o.nextField] : "nothing — you have it all";
+  const fact = o.toolAnswer ? ` A fact to share accurately: "${o.toolAnswer}".` : "";
+  return (
+    `We're COLLECTING a referral. Known so far: ${summarizeDraft(o.draft)}. ` +
+    `The one field I still need: ${field}.${fact} ` +
+    `The caller just said: "${o.userText}". ` +
+    `Write Remy's next line — acknowledge what they said${o.toolAnswer ? ", share that fact," : ""} and ask for that one field.`
+  );
+}
+
+function closingPrompt(o: ConverseOpts): string {
+  const promise =
+    o.decisionKind === "accept"
+      ? "A coordinator will call the patient within the hour."
+      : "A coordinator will call back within fifteen minutes.";
+  const fact = o.toolAnswer ? ` A fact to share accurately: "${o.toolAnswer}".` : "";
+  const ref = o.referenceCode ? ` The reference code is ${o.referenceCode}.` : "";
+  return (
+    `The referral is already handled (${o.decisionKind ?? "logged"}). ${promise}${ref}${fact} ` +
+    `The caller just said: "${o.userText}". ` +
+    `Answer them warmly and consistently — do NOT re-decide or change anything. If they're wrapping up, give a brief warm goodbye.`
+  );
+}
+
+export async function converse(o: ConverseOpts): Promise<string> {
+  try {
+    const user = o.mode === "collecting" ? collectingPrompt(o) : closingPrompt(o);
+    const raw = await callModel({
+      system: CONVERSE_SYSTEM,
+      messages: [...o.history.slice(-6), { role: "user", content: user }],
+      temperature: 0.4,
+      maxTokens: 80,
+      timeoutMs: 6000,
+    });
+    const text = raw.trim();
+    if (!text) return o.fallback;
+    // Rule 1 guard: the responder can never invent acceptance outside an
+    // actual accept decision.
+    if (!o.allowAcceptance && ACCEPTANCE_RE.test(text)) return o.fallback;
+    return text;
+  } catch {
+    return o.fallback;
+  }
+}
+
+// ── Deterministic CLOSING templates ─────────────────────────────────────────
+
+export function warmCloseLine(): string {
+  return "Thanks so much for calling — we've got it from here. Take care now, bye.";
+}
+
+export function nudgeLine(): string {
+  return "Take your time — anything else I can grab for you?";
+}
+
+export function referenceRepeat(code: string): string {
+  return `Sure thing — your reference is ${code}. Anything else?`;
+}
+
+export function newReferralPrompt(): string {
+  return "Of course — go ahead, I'm ready when you are.";
+}
+

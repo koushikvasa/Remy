@@ -1,5 +1,5 @@
 import { ReferralDraft } from "@remy/shared";
-import { Session } from "./session";
+import { Session, emptyDraft } from "./session";
 import { extract, DRAFT_FIELDS, ModelError } from "./agents/extractor";
 import {
   askForField,
@@ -8,6 +8,11 @@ import {
   correctionPrompt,
   politeReprompt,
   readback,
+  converse,
+  warmCloseLine,
+  nudgeLine,
+  referenceRepeat,
+  newReferralPrompt,
   ESCALATION_LINE,
 } from "./agents/responder";
 import { answerOffscript } from "./agents/offscript";
@@ -24,17 +29,18 @@ import { logEvent, finalizeRun } from "./telemetry";
  * GREETING → COLLECTING → READBACK → DECIDING → CLOSING. Confirmed readback runs
  * FitChecker + the deterministic decide() gate, then writes a referrals row.
  *
- * P5 additions (COLLECTING branch only, no new stage): off-script coverage
- * questions are answered from the tools then collection resumes; an explicit
- * human request or three unparseable turns escalate; one missing field is asked
- * per turn. Every turn is timed (prompt received → reply ready) and logged.
- *
- * Every turn is wrapped so a model failure never leaves dead air (rule 5).
+ * P7.2: the WORDING of each non-fast-path turn comes from the conversational
+ * responder (converse()) — it reacts to what the caller actually said and, while
+ * collecting, works the next missing field in. Control flow (stage transitions,
+ * the gate, readback confirmation) stays deterministic. CLOSING is a real
+ * conversational state. The responder never decides/accepts (guarded); on any
+ * failure it falls back to deterministic templates (rule 5). Pure confirmations
+ * at readback stay on a deterministic fast-path for latency.
  */
 
 export interface TurnResult {
   reply: string;
-  done: boolean; // conversation over (completed or escalated closed)
+  done: boolean; // conversation truly over (goodbye / silence / hard failure)
   escalated?: boolean;
   latencyMs?: number; // total turn latency, stamped by handleTurn
 }
@@ -52,8 +58,15 @@ const DONE =
 const HUMAN_REQUEST =
   /(speak|talk|connect|transfer|get) (me )?(to )?(a |an |the )?(human|person|someone|representative|rep|agent|coordinator|operator)|real person|human being/i;
 
+// CLOSING intents (P7.2).
+const GOODBYE =
+  /\b(bye|goodbye|good ?night|that'?s (all|it|everything)|that is (all|it)|nothing else|we'?re (all )?(good|set)|all set|no that'?s it|take care|have a (good|great|nice)|thank you|thanks|appreciate it)\b/i;
+const SECOND_REFERRAL =
+  /(another|second|one more|next)\s+(referral|patient|case|one)|another (referral|patient|case|one)|got another|can i give you another|i have another|one more for you/i;
+const REFERENCE_REQUEST =
+  /(reference|confirmation)\s+(number|code|id)|what.{0,12}(reference|confirmation)|repeat.{0,15}(reference|code|number)|(that|the) (number|code|reference) again|say (that|it) again/i;
+
 // Backchannel / filler tokens (case-insensitive, stretched repeats allowed).
-// An utterance made ENTIRELY of these carries no referral content.
 const FILLER_TOKEN =
   /^(m+|h+m+|m+h+m*|hm+|mhm+|u+h+|uh|huh|okay|ok|k|mkay|yeah|yea|yep|yup|yes|right|sure|got|it|alright|cool|oh|ah|aha|so|well|um|uhm|erm|er)$/i;
 
@@ -66,6 +79,18 @@ function isPureFiller(text: string): boolean {
     .filter(Boolean);
   if (tokens.length === 0) return true; // empty / silence
   return tokens.every((t) => FILLER_TOKEN.test(t));
+}
+
+/** Recent conversation for the responder, excluding the just-pushed caller turn. */
+function recentHistory(
+  session: Session,
+  userText: string
+): { role: "user" | "assistant"; content: string }[] {
+  const msgs = session.messages;
+  const last = msgs[msgs.length - 1];
+  const base =
+    last && last.role === "user" && last.content === userText ? msgs.slice(0, -1) : msgs;
+  return base.slice(-6);
 }
 
 export async function handleTurn(
@@ -113,9 +138,7 @@ async function collectTurn(
   session: Session,
   userText: string
 ): Promise<TurnResult> {
-  // 1. Pure backchannel ("mm-hmm", "okay", "yeah") → zero field updates, does
-  // NOT run the extractor and does NOT count toward the nonsense streak. This is
-  // the highest-probability live-call bug: fillers must never mutate the draft.
+  // 1. Pure backchannel → zero field updates, no extractor, no streak (fast path).
   if (isPureFiller(userText)) {
     session.messages.pop(); // keep filler out of the extractor context
     const missing = missingFields(session.draft);
@@ -134,17 +157,27 @@ async function collectTurn(
     return escalateToHuman(session, "CALLER_REQUESTED_HUMAN");
   }
 
-  // 3. Off-script coverage question → answer from tools, then resume collection.
+  // 3. Off-script coverage question → answer from tools, then resume (responder
+  // weaves the answer in). Keep the question OUT of the extractor context so it
+  // can't be misread as the patient's payer.
   const off = await answerOffscript(userText);
   if (off) {
     session.unparseableStreak = 0;
-    // Keep the coverage question OUT of the extractor's context — otherwise
-    // "do you take Humana?" gets misread as the patient's payer. Drop the
-    // just-pushed question and don't add the answer to the transcript.
     session.messages.pop();
     const missing = missingFields(session.draft);
-    const reply =
-      missing.length > 0 ? `${off.answer} ${askForField(missing[0]!)}` : off.answer;
+    const nextField = missing[0] ?? null;
+    const fallback = nextField ? `${off.answer} ${askForField(nextField)}` : off.answer;
+    const reply = await converse({
+      mode: "collecting",
+      draft: session.draft,
+      nextField,
+      userText,
+      history: recentHistory(session, userText),
+      toolAnswer: off.answer,
+      allowAcceptance: false,
+      fallback,
+    });
+    session.messages.push({ role: "assistant", content: reply });
     await logEvent({
       runId: session.runId,
       stage: "COLLECTING",
@@ -154,7 +187,7 @@ async function collectTurn(
     return { reply, done: false };
   }
 
-  // 4. Normal extraction.
+  // 4. Normal extraction (unchanged, schema-validated).
   const t0 = Date.now();
   const out = await extract(session.draft, session.messages);
   const latencyMs = Date.now() - t0;
@@ -181,7 +214,7 @@ async function collectTurn(
   if (ready) {
     session.unparseableStreak = 0;
     session.stage = "READBACK";
-    const reply = readback(session.draft);
+    const reply = readback(session.draft); // deterministic — must be exact
     session.messages.push({ role: "assistant", content: reply });
     await logEvent({
       runId: session.runId,
@@ -204,12 +237,22 @@ async function collectTurn(
     return escalateToHuman(session, "CALLER_REQUESTED_HUMAN");
   }
 
-  // Ask for exactly ONE missing field this turn (with an acknowledgment).
+  // Ask for exactly ONE missing field this turn.
   const field = missing[0]!;
-  const reply =
-    session.unparseableStreak === 2
-      ? politeReprompt(field)
-      : nextQuestion(session.draft, out.updated_fields, field);
+  let reply: string;
+  if (session.unparseableStreak === 2) {
+    reply = politeReprompt(field); // couldn't parse — deterministic, safe
+  } else {
+    reply = await converse({
+      mode: "collecting",
+      draft: session.draft,
+      nextField: field,
+      userText,
+      history: recentHistory(session, userText),
+      allowAcceptance: false,
+      fallback: nextQuestion(session.draft, out.updated_fields, field),
+    });
+  }
   session.messages.push({ role: "assistant", content: reply });
   await logEvent({
     runId: session.runId,
@@ -227,7 +270,7 @@ async function readbackTurn(
   const yes = AFFIRMATIVE.test(userText);
   const no = NEGATIVE.test(userText);
 
-  // Confirmed → run the decision gate.
+  // Fast path: a pure confirmation runs the gate immediately (no LLM).
   if (yes && !no) {
     session.stage = "DECIDING";
     await logEvent({
@@ -249,6 +292,20 @@ async function readbackTurn(
       stage: "COLLECTING",
       subAgent: "responder",
       payload: { kind: "correction_requested" },
+    });
+    return { reply, done: false };
+  }
+
+  // Off-script question at readback (stage-agnostic) → answer, then re-confirm.
+  const off = await answerOffscript(userText);
+  if (off) {
+    const reply = `${off.answer} So — did I get everything right?`;
+    session.messages.push({ role: "assistant", content: reply });
+    await logEvent({
+      runId: session.runId,
+      stage: "READBACK",
+      subAgent: "responder",
+      payload: { kind: "offscript_answer", topic: off.kind },
     });
     return { reply, done: false };
   }
@@ -293,13 +350,17 @@ async function decideTurn(session: Session): Promise<TurnResult> {
     const referralId = await writeReferral(session, decision);
     await finalizeRun(session.runId, "completed");
     session.finalized = true;
-    // Weave in the reference code (deterministic; doesn't touch the gate).
-    const reply = referralId
-      ? `${decision.spoken_reason} Your reference is ${referralShortCode(referralId)}.`
-      : decision.spoken_reason;
-    return { reply, done: true };
+    session.referenceCode = referralId ? referralShortCode(referralId) : null;
+    // Weave in the reference code + invite continuation. done:false so the call
+    // stays open — auto-end must NEVER fire straight after the decision line.
+    const codePart = session.referenceCode ? ` Your reference is ${session.referenceCode}.` : "";
+    return {
+      reply: `${decision.spoken_reason}${codePart} Anything else I can help you with?`,
+      done: false,
+    };
   }
 
+  // Escalate → collect a callback number next (CLOSING).
   session.stage = "CLOSING";
   session.awaitingCallback = true;
   return { reply: decision.spoken_reason, done: false, escalated: true };
@@ -309,38 +370,138 @@ async function closingTurn(
   session: Session,
   userText: string
 ): Promise<TurnResult> {
-  if (!session.awaitingCallback || !session.decision) {
-    return { reply: "Thanks — we're all set here.", done: true };
-  }
+  // A. Escalate: capture the callback number (first CLOSING turn after escalate).
+  if (session.awaitingCallback && session.decision) {
+    const digits = userText.replace(/[^\d+]/g, "");
+    session.callbackPhone = digits.length >= 7 ? digits : userText.trim();
+    session.awaitingCallback = false;
 
-  const digits = userText.replace(/[^\d+]/g, "");
-  session.callbackPhone = digits.length >= 7 ? digits : userText.trim();
-  session.awaitingCallback = false;
+    const referralId = await writeReferral(session, session.decision);
+    session.referenceCode = referralId ? referralShortCode(referralId) : null;
+    await finalizeRun(session.runId, "escalated");
+    session.finalized = true;
 
-  const referralId = await writeReferral(session, session.decision);
-  await finalizeRun(session.runId, "escalated");
-  session.finalized = true;
-
-  await logEvent({
-    runId: session.runId,
-    stage: "CLOSING",
-    subAgent: "system",
-    payload: { event: "escalation_closed", callback_captured: true },
-  });
-
-  // P6: call the on-call coordinator. Safe if voice/coordinators are unavailable.
-  if (referralId) {
-    await notifyCoordinatorOfEscalation({
+    await logEvent({
       runId: session.runId,
-      referralId,
-      reasonCode: session.decision.reason_code,
+      stage: "CLOSING",
+      subAgent: "system",
+      payload: { event: "escalation_closed", callback_captured: true },
     });
+
+    if (referralId) {
+      await notifyCoordinatorOfEscalation({
+        runId: session.runId,
+        referralId,
+        reasonCode: session.decision.reason_code,
+      });
+    }
+
+    const reply =
+      "Perfect — you'll hear from us within fifteen minutes. Thanks so much for your patience. Anything else I can help with?";
+    session.messages.push({ role: "assistant", content: reply });
+    return { reply, done: false };
   }
 
-  const reply =
-    "Perfect — you'll hear from us within fifteen minutes. Thanks so much for your patience.";
+  // B. Post-decision conversation.
+
+  // Silence / backchannel → after two, close warmly.
+  if (isPureFiller(userText)) {
+    session.messages.pop();
+    session.silentTurns += 1;
+    if (session.silentTurns >= 2) return closeWarmly(session);
+    return { reply: nudgeLine(), done: false };
+  }
+  session.silentTurns = 0;
+
+  // Coverage / capacity question (stage-agnostic).
+  const off = await answerOffscript(userText);
+  if (off) {
+    const decisionKind = session.decision?.decision ?? null;
+    const reply = await converse({
+      mode: "closing",
+      draft: session.draft,
+      nextField: null,
+      userText,
+      history: recentHistory(session, userText),
+      toolAnswer: off.answer,
+      decisionKind,
+      referenceCode: session.referenceCode,
+      allowAcceptance: decisionKind === "accept",
+      fallback: `${off.answer} Anything else I can help with?`,
+    });
+    session.messages.push({ role: "assistant", content: reply });
+    await logEvent({
+      runId: session.runId,
+      stage: "CLOSING",
+      subAgent: "responder",
+      payload: { kind: "offscript_answer", topic: off.kind },
+    });
+    return { reply, done: false };
+  }
+
+  // Second referral → fresh draft, same run, back to COLLECTING.
+  if (SECOND_REFERRAL.test(userText)) {
+    resetForNewReferral(session);
+    const reply = newReferralPrompt();
+    session.messages.push({ role: "assistant", content: reply });
+    await logEvent({
+      runId: session.runId,
+      stage: "COLLECTING",
+      subAgent: "system",
+      payload: { event: "second_referral" },
+    });
+    return { reply, done: false };
+  }
+
+  // Repeat the reference code.
+  if (REFERENCE_REQUEST.test(userText) && session.referenceCode) {
+    const reply = referenceRepeat(session.referenceCode);
+    session.messages.push({ role: "assistant", content: reply });
+    return { reply, done: false };
+  }
+
+  // Goodbye → warm close + (auto-)end.
+  if (GOODBYE.test(userText)) return closeWarmly(session);
+
+  // Otherwise a next-steps / general question → answer in persona, consistently.
+  const decisionKind = session.decision?.decision ?? null;
+  const fallback =
+    decisionKind === "accept"
+      ? "Our coordinator will call the patient within the hour to set everything up — anything else I can help with?"
+      : "Our coordinator will reach out within fifteen minutes — anything else I can help with?";
+  const reply = await converse({
+    mode: "closing",
+    draft: session.draft,
+    nextField: null,
+    userText,
+    history: recentHistory(session, userText),
+    decisionKind,
+    referenceCode: session.referenceCode,
+    allowAcceptance: decisionKind === "accept",
+    fallback,
+  });
+  session.messages.push({ role: "assistant", content: reply });
+  return { reply, done: false };
+}
+
+function closeWarmly(session: Session): TurnResult {
+  const reply = warmCloseLine();
   session.messages.push({ role: "assistant", content: reply });
   return { reply, done: true };
+}
+
+function resetForNewReferral(session: Session): void {
+  session.draft = emptyDraft();
+  session.stage = "COLLECTING";
+  session.decision = null;
+  session.fit = null;
+  session.payerMatchedId = null;
+  session.awaitingCallback = false;
+  session.callbackPhone = null;
+  session.unparseableStreak = 0;
+  session.silentTurns = 0;
+  session.finalized = false;
+  session.referenceCode = null;
 }
 
 /**

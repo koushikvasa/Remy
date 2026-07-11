@@ -12,7 +12,7 @@ import OpenAI from "openai";
 
 const MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 const TEMPERATURE = 0.2; // extraction wants determinism
-const TIMEOUT_MS = 8000;
+const DEFAULT_TIMEOUT_MS = 8000;
 
 // Lazy so importing this module (or booting /health) never requires the key.
 let _client: OpenAI | null = null;
@@ -28,16 +28,20 @@ export interface CallModelOpts {
   messages: { role: "user" | "assistant"; content: string }[];
   /** When provided, force structured output via OpenAI JSON Schema mode. */
   jsonSchema?: Record<string, unknown>;
+  temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
 }
 
 export async function callModel(opts: CallModelOpts): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   try {
     const completion = await client().chat.completions.create(
       {
         model: MODEL,
-        temperature: TEMPERATURE,
+        temperature: opts.temperature ?? TEMPERATURE,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
         messages: [
           { role: "system", content: opts.system },
           ...opts.messages,

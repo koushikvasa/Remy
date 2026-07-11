@@ -30,6 +30,9 @@ export interface Session {
   callbackPhone: string | null;
   // robustness (P5): consecutive turns that yielded no new field
   unparseableStreak: number;
+  // conversational CLOSING (P7.2)
+  referenceCode: string | null;
+  silentTurns: number;
 }
 
 // GREETING is delivered via TwiML welcomeGreeting on a real call; the simulator
@@ -82,5 +85,7 @@ export async function startSession(input: StartSessionInput): Promise<Session> {
     awaitingCallback: false,
     callbackPhone: null,
     unparseableStreak: 0,
+    referenceCode: null,
+    silentTurns: 0,
   };
 }

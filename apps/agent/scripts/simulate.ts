@@ -14,6 +14,9 @@ import { finalizeRun } from "../src/telemetry";
  *
  * Usage:  pnpm --filter @remy/agent sim [--phone +15551234567]
  * (on this machine, prefix with NODE_OPTIONS=--use-system-ca for TLS)
+ *
+ * Chatty-caller test (reads like two humans):
+ *   pnpm --filter @remy/agent sim < scripts/chatty-caller.txt
  */
 
 function getArg(flag: string): string | undefined {
