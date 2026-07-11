@@ -17,6 +17,7 @@ import { EventFeed } from "./EventFeed";
 import { EconomicsStrip } from "./EconomicsStrip";
 import { ThemeToggle } from "./ThemeToggle";
 import { MedicalAssistants } from "./MedicalAssistants";
+import { Logo } from "./Logo";
 
 // How long a finished call stays in the hero before returning to the empty state.
 const RECENT_WINDOW_MS = 120_000;
@@ -25,11 +26,10 @@ function TopBar({ activeCount }: { activeCount: number }) {
   const live = activeCount > 0;
   return (
     <header className="flex items-center justify-between px-1">
-      <div className="flex items-baseline gap-3">
-        <h1 className="font-display text-xl font-semibold tracking-tight text-ink">
-          Remy
-        </h1>
-        <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-muted">
+      <div className="flex min-w-0 items-center gap-3">
+        <h1 className="sr-only">Remy Command Center</h1>
+        <Logo />
+        <span className="hidden font-mono text-[11px] uppercase tracking-[0.3em] text-muted sm:inline">
           Command Center
         </span>
       </div>

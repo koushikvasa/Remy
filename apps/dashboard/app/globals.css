@@ -11,35 +11,36 @@
  * All channel values are space-separated RGB so Tailwind's `<alpha-value>`
  * (e.g. bg-signal/10) works in both themes.
  */
+/* Palette derived from the Remy logo: deep navy, teal/cyan accent, cream paper. */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-base: 11 15 20; /* #0B0F14 */
-  --color-panel: 17 22 29; /* #11161D */
-  --color-hairline: 30 38 48; /* #1E2630 */
-  --color-ink: 232 237 242; /* #E8EDF2 */
-  --color-muted: 154 164 178; /* #9AA4B2 — nudged up for AA on the dark base */
-  --color-signal: 61 220 132; /* #3DDC84 */
-  --color-amber: 255 180 84; /* #FFB454 */
-  --color-danger: 255 92 92; /* #FF5C5C */
-  --color-focus: 61 220 132;
+  --color-base: 9 13 22; /* #090D16 — deep navy-black */
+  --color-panel: 18 24 38; /* #121826 — navy panel */
+  --color-hairline: 37 48 68; /* #253044 — navy hairline */
+  --color-ink: 233 238 245; /* #E9EEF5 */
+  --color-muted: 148 161 181; /* #94A1B5 — AA on the navy base */
+  --color-signal: 47 199 218; /* #2FC7DA — teal/cyan accent (from the logo) */
+  --color-amber: 255 180 84; /* #FFB454 — escalations */
+  --color-danger: 255 92 92; /* #FF5C5C — failures */
+  --color-focus: 47 199 218;
   --shadow-rgb: 0 0 0;
-  --scrollbar-thumb: 40 50 62;
+  --scrollbar-thumb: 40 52 72;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --color-base: 240 243 247; /* #F0F3F7 */
+  --color-base: 242 240 234; /* #F2F0EA — warm cream (logo paper) */
   --color-panel: 255 255 255; /* #FFFFFF */
-  --color-hairline: 214 221 230; /* #D6DDE6 */
-  --color-ink: 15 23 32; /* #0F1720 */
-  --color-muted: 82 92 106; /* #525C6A — ~6:1 on white */
-  --color-signal: 10 125 71; /* #0A7D47 — deep green, AA as small text */
-  --color-amber: 166 96 0; /* #A66000 — dark amber, AA on white */
+  --color-hairline: 221 216 205; /* #DDD8CD — warm hairline */
+  --color-ink: 23 37 94; /* #17255E — deep navy (the wordmark) */
+  --color-muted: 85 97 125; /* #55617D — navy-grey, AA on cream/white */
+  --color-signal: 15 124 143; /* #0F7C8F — deep teal, AA as small text */
+  --color-amber: 166 96 0; /* #A66000 — dark amber on light */
   --color-danger: 197 32 32; /* #C52020 */
-  --color-focus: 10 125 71;
-  --shadow-rgb: 15 23 42;
-  --scrollbar-thumb: 200 208 218;
+  --color-focus: 15 124 143;
+  --shadow-rgb: 23 37 94;
+  --scrollbar-thumb: 205 210 200;
 }
 
 html,
