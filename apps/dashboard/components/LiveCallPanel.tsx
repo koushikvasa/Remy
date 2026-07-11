@@ -95,9 +95,10 @@ export function LiveCallPanel({
         {escStatus && (
           <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-signal">
             Coordinator called
-            {escStatus === "assigned" && (
-              <span className="text-signal"> → assigned</span>
+            {(escStatus === "assigned" || escStatus === "notified") && (
+              <span> → assigned</span>
             )}
+            {escStatus === "notified" && <span> → source notified</span>}
           </div>
         )}
       </div>

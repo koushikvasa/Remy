@@ -1,8 +1,10 @@
 import { escapeXml } from "./twiml";
 import { logEvent } from "./telemetry";
+import { notifySourceOfAssignment } from "./escalation";
 import {
   assignReferral,
   getActiveCoordinator,
+  getCoordinatorById,
   getEscalatedReferral,
   referralShortCode,
   type EscalatedReferral,
@@ -92,6 +94,10 @@ export async function coordinatorChoiceTwiml(
         payload: { event: "assigned", code: referralShortCode(r.id), coordinator: coord?.name },
       });
     }
+    if (ok) {
+      // Third leg: call the referral source back with the update.
+      await notifySourceOfAssignment({ runId: r.run_id, referralId: r.id });
+    }
     return ok
       ? xml(`<Say>Assigned to you. The referral card is on your dashboard. Goodbye.</Say><Hangup/>`)
       : xml(`<Say>Sorry, we couldn't assign that right now. Goodbye.</Say><Hangup/>`);
@@ -110,4 +116,21 @@ export async function coordinatorChoiceTwiml(
   return xml(
     `<Say>No problem. We'll keep it in the queue for another coordinator. Goodbye.</Say><Hangup/>`
   );
+}
+
+/** TwiML for the source call-back: <Say> only (no gather). Voicemail-safe. */
+export async function sourceNotifyTwiml(referralId: string): Promise<string> {
+  const r = await getEscalatedReferral(referralId);
+  if (!r) {
+    return xml(`<Say>Thanks for calling Sunrise Home Health. Goodbye.</Say><Hangup/>`);
+  }
+  const coord = await getCoordinatorById(r.assigned_to);
+  const name = coord?.name ?? "our coordinator";
+  const initial = r.patient_first_initial ?? "your patient";
+  const code = referralShortCode(r.id);
+  const say =
+    `This is an update from Sunrise Home Health on the referral for patient ${initial}. ` +
+    `Coordinator ${name} has taken your case and will call within fifteen minutes. ` +
+    `Your reference is ${code}. Thank you.`;
+  return xml(`<Say>${escapeXml(say)}</Say><Hangup/>`);
 }

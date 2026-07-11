@@ -1,8 +1,11 @@
 import { logEvent } from "./telemetry";
+import { supabase } from "./db";
 import { startCall } from "./tools/twilioVoice";
 import {
   claimCallout,
+  claimSourceNotify,
   getActiveCoordinator,
+  getEscalatedReferral,
   referralShortCode,
 } from "./coordinators";
 
@@ -65,5 +68,62 @@ export async function notifyCoordinatorOfEscalation(opts: {
     });
   } catch (err) {
     console.error(`[escalation] callout failed: ${(err as Error).message}`);
+  }
+}
+
+async function sourcePhoneForReferral(referralId: string): Promise<string | null> {
+  const r = await getEscalatedReferral(referralId);
+  if (!r) return null;
+  if (r.callback_phone) return r.callback_phone;
+  if (r.source_id) {
+    const { data } = await supabase()
+      .from("referral_sources")
+      .select("phone")
+      .eq("id", r.source_id)
+      .maybeSingle();
+    if (data?.phone) return data.phone as string;
+  }
+  return null;
+}
+
+/**
+ * Third leg: after assignment, call the referral source back with an update.
+ * Idempotent (one notify per referral), guarded — never blocks the assignment.
+ */
+export async function notifySourceOfAssignment(opts: {
+  runId: string | null;
+  referralId: string;
+}): Promise<void> {
+  const code = referralShortCode(opts.referralId);
+  const log = (payload: Record<string, unknown>) =>
+    opts.runId
+      ? logEvent({
+          runId: opts.runId,
+          stage: "CLOSING",
+          subAgent: "system",
+          toolName: "source_notify",
+          payload,
+        })
+      : Promise.resolve();
+
+  try {
+    const claimed = await claimSourceNotify(opts.referralId);
+    if (!claimed) {
+      await log({ event: "source_notify_skipped", reason: "already_notified", code });
+      return;
+    }
+
+    const phone = await sourcePhoneForReferral(opts.referralId);
+    if (!phone) {
+      await log({ event: "source_notify", status: "no_source_phone", code });
+      return;
+    }
+
+    const host = process.env.PUBLIC_HOST ?? "";
+    const url = `https://${host}/source-notify?referral_id=${encodeURIComponent(opts.referralId)}`;
+    const res = await startCall(phone, url);
+    await log({ event: "source_notify", code, placed: res.ok, error: res.ok ? undefined : res.error });
+  } catch (err) {
+    console.error(`[escalation] source notify failed: ${(err as Error).message}`);
   }
 }

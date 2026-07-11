@@ -140,11 +140,17 @@ export function isEscalationReason(decision: DecisionView | null): boolean {
   return decision?.decision !== "accept";
 }
 
-/** Coordinator callout status from the run's events (P6): called → assigned. */
+/** Callout chain status from the run's events (P6): called → assigned → notified. */
 export function deriveEscalationStatus(
   events: RunEventRow[]
-): "called" | "assigned" | null {
+): "called" | "assigned" | "notified" | null {
   const evs = sortedBySeq(events);
+  if (
+    evs.some(
+      (e) => e.tool_name === "source_notify" && e.payload && e.payload.event === "source_notify" && e.payload.placed
+    )
+  )
+    return "notified";
   if (evs.some((e) => e.payload && e.payload.event === "assigned")) return "assigned";
   if (
     evs.some(

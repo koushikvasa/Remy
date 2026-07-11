@@ -24,11 +24,33 @@ export interface EscalatedReferral {
   payer_raw: string | null;
   zip: string | null;
   reason_code: string | null;
+  callback_phone: string | null;
+  source_id: string | null;
 }
 
 /** Deterministic short code from a referral id (e.g. "R-3F9A2C"). */
 export function referralShortCode(referralId: string): string {
   return "R-" + referralId.replace(/-/g, "").slice(0, 6).toUpperCase();
+}
+
+export async function getCoordinatorById(
+  id: string | null
+): Promise<Coordinator | null> {
+  if (!id) return null;
+  try {
+    const { data, error } = await supabase()
+      .from("coordinators")
+      .select("id, name, phone, active")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) {
+      console.error(`[coordinators] by id: ${error.message}`);
+      return null;
+    }
+    return (data as Coordinator | null) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function getActiveCoordinator(): Promise<Coordinator | null> {
@@ -93,6 +115,26 @@ export async function claimCallout(referralId: string): Promise<boolean> {
     return (data?.length ?? 0) > 0;
   } catch (err) {
     console.error(`[coordinators] claimCallout: ${(err as Error).message}`);
+    return false;
+  }
+}
+
+/** Idempotency claim for the source call-back (one notify per referral). */
+export async function claimSourceNotify(referralId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase()
+      .from("referrals")
+      .update({ source_notified_at: new Date().toISOString() })
+      .eq("id", referralId)
+      .is("source_notified_at", null)
+      .select("id");
+    if (error) {
+      console.error(`[coordinators] claimSourceNotify: ${error.message}`);
+      return false;
+    }
+    return (data?.length ?? 0) > 0;
+  } catch (err) {
+    console.error(`[coordinators] claimSourceNotify: ${(err as Error).message}`);
     return false;
   }
 }

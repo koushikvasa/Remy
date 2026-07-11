@@ -12,7 +12,8 @@ create table coordinators (
 -- callout_at is the idempotency guard: set when the outbound call is placed.
 alter table referrals add column assigned_to uuid references coordinators(id);
 alter table referrals add column assigned_at timestamptz;
-alter table referrals add column callout_at timestamptz;
+alter table referrals add column callout_at timestamptz;         -- coordinator call idempotency
+alter table referrals add column source_notified_at timestamptz; -- source call-back idempotency
 
 -- Realtime + anon read (dashboard shows assignment flips live).
 alter publication supabase_realtime add table coordinators;

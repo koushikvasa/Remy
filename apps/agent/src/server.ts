@@ -10,6 +10,7 @@ import { buildGreeting, twimlConnect } from "./twiml";
 import {
   coordinatorCallTwiml,
   coordinatorChoiceTwiml,
+  sourceNotifyTwiml,
 } from "./coordinatorCall";
 
 /**
@@ -74,6 +75,13 @@ server.post("/coordinator-choice", async (req, reply) => {
   const referralId = (req.query as Record<string, string>)?.referral_id ?? "";
   const digits = ((req.body ?? {}) as Record<string, string>).Digits ?? "";
   const xml = await coordinatorChoiceTwiml(referralId, digits);
+  reply.type("text/xml").send(xml);
+});
+
+// Source call-back TwiML: <Say>-only update to the referral source.
+server.post("/source-notify", async (req, reply) => {
+  const referralId = (req.query as Record<string, string>)?.referral_id ?? "";
+  const xml = await sourceNotifyTwiml(referralId);
   reply.type("text/xml").send(xml);
 });
 
