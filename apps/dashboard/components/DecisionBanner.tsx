@@ -4,7 +4,13 @@ import type { DecisionView } from "../lib/runState";
  * Full-width strip when the decider event lands. Green ACCEPTED / amber ESCALATED,
  * with the spoken_reason quoted underneath.
  */
-export function DecisionBanner({ decision }: { decision: DecisionView }) {
+export function DecisionBanner({
+  decision,
+  referenceCode,
+}: {
+  decision: DecisionView;
+  referenceCode?: string;
+}) {
   const accepted = decision.decision === "accept";
   const verb = accepted ? "ACCEPTED" : "ESCALATED";
 
@@ -19,11 +25,18 @@ export function DecisionBanner({ decision }: { decision: DecisionView }) {
       aria-live="polite"
       className={`rounded-md border px-4 py-3 shadow-panel ${style}`}
     >
-      <div className={`font-display text-lg font-semibold tracking-tight ${headline}`}>
-        {verb}
-        <span className="ml-2 font-mono text-sm font-normal text-muted">
-          {decision.reason_code}
-        </span>
+      <div className="flex items-baseline justify-between gap-2">
+        <div className={`font-display text-lg font-semibold tracking-tight ${headline}`}>
+          {verb}
+          <span className="ml-2 font-mono text-sm font-normal text-muted">
+            {decision.reason_code}
+          </span>
+        </div>
+        {referenceCode && (
+          <span className="shrink-0 font-mono text-sm text-muted">
+            Ref {referenceCode}
+          </span>
+        )}
       </div>
       {decision.spoken_reason && (
         <p className="mt-1 text-sm italic text-ink/90">

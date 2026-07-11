@@ -4,11 +4,12 @@ import type { RunEventRow, RunRow, SourceRow } from "../lib/types";
 import {
   deriveChips,
   deriveDecision,
+  deriveDecisionAt,
   deriveDraft,
   deriveEscalationStatus,
   deriveStepIndex,
 } from "../lib/runState";
-import { durationLabel, formatPhone } from "../lib/format";
+import { durationLabel, formatPhone, referenceCode } from "../lib/format";
 import { StatusPill } from "./pills";
 import { StageStepper } from "./StageStepper";
 import { DraftGrid } from "./DraftGrid";
@@ -35,7 +36,18 @@ export function LiveCallPanel({
   const terminalStatus =
     run.status === "active" ? null : (run.status as "completed" | "escalated" | "failed");
 
-  const endMs = run.ended_at ? new Date(run.ended_at).getTime() : nowMs;
+  // Time-to-decision stopwatch: ticks live, then freezes at the decision event
+  // (the pitch beat — "42 seconds" vs the ~45-minute industry norm).
+  const decisionAt = deriveDecisionAt(events);
+  const frozen = decisionAt != null;
+  const clockMs =
+    decisionAt ?? (run.ended_at ? new Date(run.ended_at).getTime() : nowMs);
+  const accepted = decision?.decision === "accept";
+  const clockColor = frozen
+    ? accepted
+      ? "text-signal"
+      : "text-amber"
+    : "text-ink";
 
   const orgName = source?.org_name ?? "Inbound referral";
   const contact = source?.contact_name ?? null;
@@ -60,11 +72,21 @@ export function LiveCallPanel({
             {formatPhone(run.caller_phone)}
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-1">
           <StatusPill status={run.status} />
-          <div className="font-mono text-xl tabular-nums text-ink sm:text-2xl">
-            {durationLabel(run.started_at, endMs)}
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+            {frozen ? "Time to decision" : "Elapsed"}
+          </span>
+          <div
+            className={`font-mono text-2xl tabular-nums sm:text-3xl ${clockColor}`}
+          >
+            {durationLabel(run.started_at, clockMs)}
           </div>
+          {frozen && (
+            <span className="font-mono text-[10px] text-muted">
+              vs ~45 min industry
+            </span>
+          )}
         </div>
       </div>
 
@@ -90,7 +112,10 @@ export function LiveCallPanel({
       {/* Decision banner */}
       <div className="mt-auto">
         {decision ? (
-          <DecisionBanner decision={decision} />
+          <DecisionBanner
+            decision={decision}
+            referenceCode={referenceCode(run.run_id)}
+          />
         ) : (
           <div className="rounded border border-dashed border-hairline px-4 py-3 font-mono text-xs text-muted">
             Awaiting decision…

@@ -1,5 +1,5 @@
 import type { ReferralRow } from "../lib/types";
-import { disciplineLabel, formatPhone, timeAgo } from "../lib/format";
+import { disciplineLabel, durationLabel, formatPhone, isRecent, timeAgo } from "../lib/format";
 import { DecisionPill, AssignedPill } from "./pills";
 
 /** The "mock EMR" — latest referrals as compact rows. */
@@ -64,6 +64,19 @@ export function ReferralQueue({
                 {timeAgo(r.created_at, nowMs)}
               </span>
             </div>
+            {r.decision === "escalated" &&
+              (r.assigned_at ? (
+                <div className="mt-1 font-mono text-[11px] text-signal">
+                  ✓ coordinator responded in{" "}
+                  {durationLabel(r.created_at, new Date(r.assigned_at).getTime())}
+                </div>
+              ) : isRecent(r.created_at, nowMs, 600_000) ? (
+                <div className="mt-1 font-mono text-[11px] text-amber">
+                  <span aria-hidden="true">⏱ </span>awaiting coordinator{" "}
+                  {durationLabel(r.created_at, nowMs)}
+                </div>
+              ) : null)}
+
             {r.decision === "escalated" && r.callback_phone && (
               <div className="mt-1 font-mono text-[11px] text-amber">
                 ↳ callback {formatPhone(r.callback_phone)}

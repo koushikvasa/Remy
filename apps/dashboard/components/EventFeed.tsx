@@ -63,9 +63,14 @@ export function EventFeed({ events }: { events: RunEventRow[] }) {
           <ol className="flex min-w-max items-start">
             {sorted.map((e, i) => {
               const agent = e.sub_agent ?? "";
-              const dot = AGENT_DOT[agent] ?? "bg-muted";
-              const text = AGENT_TEXT[agent] ?? "text-muted";
               const last = i === sorted.length - 1;
+              // Highlight off-script "answered from knowledge base" turns — the
+              // P5 feature that's otherwise invisible in the raw feed.
+              const p = (e.payload ?? {}) as Record<string, unknown>;
+              const kb = p.kind === "offscript_answer";
+              const kbTopic = kb ? String(p.topic ?? "") : "";
+              const dot = kb ? "bg-signal" : AGENT_DOT[agent] ?? "bg-muted";
+              const text = kb ? "text-signal" : AGENT_TEXT[agent] ?? "text-muted";
               return (
                 <li
                   key={e.id ?? `${e.run_id}-${e.seq}`}
@@ -76,8 +81,8 @@ export function EventFeed({ events }: { events: RunEventRow[] }) {
                     <span
                       aria-hidden="true"
                       className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot} ${
-                        last ? "live-pulse" : ""
-                      }`}
+                        kb ? "ring-2 ring-signal/30" : ""
+                      } ${last ? "live-pulse" : ""}`}
                     />
                     {!last && (
                       <span aria-hidden="true" className="h-px flex-1 bg-hairline" />
@@ -87,19 +92,19 @@ export function EventFeed({ events }: { events: RunEventRow[] }) {
                   <div className="mt-2 flex flex-col gap-0.5 pr-3">
                     <div className="flex items-baseline gap-1.5">
                       <span className={`font-mono text-[11px] font-medium ${text}`}>
-                        {agent || "—"}
+                        {kb ? "KB answer" : agent || "—"}
                       </span>
-                      {e.latency_ms != null && (
+                      {!kb && e.latency_ms != null && (
                         <span className="font-mono text-[10px] text-muted/70">
                           {e.latency_ms}ms
                         </span>
                       )}
                     </div>
                     <span className="truncate font-mono text-[10px] uppercase tracking-wide text-muted">
-                      {e.stage ?? "—"}
+                      {kb ? "knowledge base" : e.stage ?? "—"}
                     </span>
                     <span className="truncate font-mono text-[10px] text-muted/80">
-                      {e.tool_name || "·"}
+                      {kb ? kbTopic || "·" : e.tool_name || "·"}
                     </span>
                   </div>
                 </li>

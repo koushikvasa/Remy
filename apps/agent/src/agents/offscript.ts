@@ -12,15 +12,22 @@ import { checkServiceArea } from "../tools/serviceArea";
  */
 
 const QUESTION_RE =
-  /\?|^\s*(do|does|are|is|can|could|will|would|what|which|how|where|who)\b/i;
+  /\?|^\s*(do|does|are|is|can|could|will|would|what|which|how|where|who|when)\b/i;
 const AREA_RE = /(zip|area|cover|county|service|located|region|neighborhood)/i;
 const PAYER_RE =
   /(take|accept|cover|work with|in.?network|insurance|plan|payer|medicare|medicaid|humana|aetna|united|cigna)/i;
+// "How soon can you start?" / "Can someone see her this weekend?" — the #1
+// real-world question. Answered generically (no specific slot promise).
+const TIMING_RE =
+  /(how soon|how quickly|how fast|when can|start (her|him|them|care|seeing)|this weekend|same.?day|turnaround|availability|available|wait time|see (her|him|them|the patient))/i;
+// "Do you do wound care / PT / IV therapy?" — services we staff.
+const SERVICES_RE =
+  /(wound care|iv therapy|infusion|physical therapy|\bpt\b|occupational therapy|\bot\b|speech|skilled nursing|\brn\b|nurse|home health aide|\baide\b|social work)/i;
 const ZIP_RE = /\b(\d{5})\b/;
 
 export interface OffscriptAnswer {
   answer: string;
-  kind: "payer" | "area";
+  kind: "payer" | "area" | "timing" | "services";
 }
 
 export async function answerOffscript(
@@ -59,6 +66,25 @@ export async function answerOffscript(
           "We take Medicare and most Medicare Advantage plans — which does the patient have?",
       };
     }
+  }
+
+  // Timing / speed-to-start question (answered from the domain, not a promise
+  // of a specific slot — capacity is verified later by the FitChecker).
+  if (TIMING_RE.test(text)) {
+    return {
+      kind: "timing",
+      answer:
+        "Once we accept, our care coordinator schedules the first visit within 24 to 48 hours — sooner for urgent needs.",
+    };
+  }
+
+  // Services question — which disciplines we staff.
+  if (SERVICES_RE.test(text)) {
+    return {
+      kind: "services",
+      answer:
+        "Yes — we staff skilled nursing, physical, occupational, and speech therapy, home health aides, and medical social work.",
+    };
   }
 
   // Generic service-area question.
