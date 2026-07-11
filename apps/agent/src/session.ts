@@ -33,6 +33,8 @@ export interface Session {
   // conversational CLOSING (P7.2)
   referenceCode: string | null;
   silentTurns: number;
+  // escalation callout safety net (P7.3): the written escalated referral id
+  escalatedReferralId: string | null;
 }
 
 // GREETING is delivered via TwiML welcomeGreeting on a real call; the simulator
@@ -87,5 +89,6 @@ export async function startSession(input: StartSessionInput): Promise<Session> {
     unparseableStreak: 0,
     referenceCode: null,
     silentTurns: 0,
+    escalatedReferralId: null,
   };
 }

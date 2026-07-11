@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import formbody from "@fastify/formbody";
 import { startSession, type Session } from "./session";
-import { handleTurn } from "./router";
+import { handleTurn, ensureEscalationCallout } from "./router";
 import { finalizeRun, logEvent } from "./telemetry";
 import { lookupCaller } from "./tools/callerLookup";
 import { buildGreeting, twimlConnect } from "./twiml";
@@ -215,9 +215,14 @@ server.get("/ws", { websocket: true }, (socket) => {
 
   socket.on("close", async () => {
     clearPendingEnd();
-    if (session && !session.finalized) {
-      await finalizeRun(session.runId, "completed");
-      session.finalized = true;
+    if (session) {
+      // Safety net: covers any path (e.g. hang-up) that skipped the capture-point
+      // callout. Idempotent — never double-dials.
+      await ensureEscalationCallout(session).catch((err) => server.log.error(err));
+      if (!session.finalized) {
+        await finalizeRun(session.runId, "completed");
+        session.finalized = true;
+      }
     }
   });
 });

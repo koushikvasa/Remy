@@ -2,7 +2,7 @@ import "dotenv/config";
 import { createInterface } from "node:readline";
 import { ReferralDraft } from "@remy/shared";
 import { startSession, GREETING } from "../src/session";
-import { handleTurn } from "../src/router";
+import { handleTurn, ensureEscalationCallout } from "../src/router";
 import { finalizeRun } from "../src/telemetry";
 
 /**
@@ -104,6 +104,8 @@ async function main(): Promise<void> {
   }
 
   rl.close();
+  // Mirror the WS close handler: ensure any escalation callout fired (idempotent).
+  await ensureEscalationCallout(session).catch(() => {});
   if (!session.finalized) {
     await finalizeRun(session.runId, "completed");
   }

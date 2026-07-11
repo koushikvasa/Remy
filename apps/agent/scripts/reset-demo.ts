@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       requested_start: "Monday",
       decision: "escalated",
       reason_code: "PAYER_NOT_ACCEPTED",
-      callback_phone: "2015550199",
+      callback_phone: "+12015550199",
       transcript_summary:
         "Referral: 66yo initial R, post-op knee rehab, PT, payer UnitedHealthcare Medicare Advantage, ZIP 07090, start Monday.",
       created_at: iso(5 * 60000 - 55000),

@@ -52,6 +52,13 @@ export async function notifyCoordinatorOfEscalation(opts: {
     const url = `https://${host}/coordinator-call?referral_id=${encodeURIComponent(opts.referralId)}`;
     const res = await startCall(coord.phone, url);
 
+    if (!res.ok) {
+      // Diagnosable: include the Twilio error code (BUG 1 requirement).
+      console.error(
+        `[escalation] callout ${code} to ${coord.phone} not placed: ${res.error} (twilio code ${res.code ?? "n/a"})`
+      );
+    }
+
     await logEvent({
       runId: opts.runId,
       stage: "CLOSING",
@@ -64,6 +71,7 @@ export async function notifyCoordinatorOfEscalation(opts: {
         reason_code: opts.reasonCode,
         placed: res.ok,
         error: res.ok ? undefined : res.error,
+        twilio_code: res.ok ? undefined : res.code,
       },
     });
   } catch (err) {

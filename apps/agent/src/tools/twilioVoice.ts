@@ -32,6 +32,7 @@ export interface CallResult {
   ok: boolean;
   sid?: string;
   error?: string;
+  code?: string; // Twilio error code (e.g. "21211") for diagnosis
 }
 
 /** Place an outbound call. `url` is the TwiML webhook Twilio fetches on answer. */
@@ -47,6 +48,11 @@ export async function startCall(to: string, url: string): Promise<CallResult> {
     });
     return { ok: true, sid: call.sid };
   } catch (err) {
-    return { ok: false, error: (err as Error).message };
+    const e = err as { message?: string; code?: number | string };
+    return {
+      ok: false,
+      error: e.message ?? String(err),
+      code: e.code != null ? String(e.code) : undefined,
+    };
   }
 }

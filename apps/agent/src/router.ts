@@ -21,6 +21,7 @@ import { decide, wordDecision, staticEscalation } from "./agents/decider";
 import { writeReferral } from "./referrals";
 import { referralShortCode } from "./coordinators";
 import { notifyCoordinatorOfEscalation } from "./escalation";
+import { normalizeCallback } from "./phone";
 import { logEvent, finalizeRun } from "./telemetry";
 
 /**
@@ -372,11 +373,17 @@ async function closingTurn(
 ): Promise<TurnResult> {
   // A. Escalate: capture the callback number (first CLOSING turn after escalate).
   if (session.awaitingCallback && session.decision) {
-    const digits = userText.replace(/[^\d+]/g, "");
-    session.callbackPhone = digits.length >= 7 ? digits : userText.trim();
+    // Normalize to E.164 (BUG 2) — handles digits and spoken words; store the
+    // normalized value so both the DB and the source-notify leg dial correctly.
+    const norm = normalizeCallback(userText);
+    if (!norm.ok) {
+      console.warn(`[callback] could not normalize "${userText}" — storing raw`);
+    }
+    session.callbackPhone = norm.phone;
     session.awaitingCallback = false;
 
     const referralId = await writeReferral(session, session.decision);
+    session.escalatedReferralId = referralId;
     session.referenceCode = referralId ? referralShortCode(referralId) : null;
     await finalizeRun(session.runId, "escalated");
     session.finalized = true;
@@ -388,8 +395,11 @@ async function closingTurn(
       payload: { event: "escalation_closed", callback_captured: true },
     });
 
+    // Fire the coordinator callout NOW (BUG 1), fire-and-forget: the referral is
+    // persisted and the callback captured, so a hang-up right after must not
+    // skip it. Idempotent via the callout_at claim; guarded (never throws).
     if (referralId) {
-      await notifyCoordinatorOfEscalation({
+      void notifyCoordinatorOfEscalation({
         runId: session.runId,
         referralId,
         reasonCode: session.decision.reason_code,
@@ -490,6 +500,26 @@ function closeWarmly(session: Session): TurnResult {
   return { reply, done: true };
 }
 
+/**
+ * Safety net (P7.3 BUG 1): if the call ended with an escalated referral that has
+ * a callback number, make sure the coordinator callout was placed. Idempotent
+ * via the callout_at claim, so it never double-dials even if the capture-point
+ * fire already ran. Call this from the WS close handler.
+ */
+export async function ensureEscalationCallout(session: Session): Promise<void> {
+  if (
+    session.decision?.decision === "escalate" &&
+    session.callbackPhone &&
+    session.escalatedReferralId
+  ) {
+    await notifyCoordinatorOfEscalation({
+      runId: session.runId,
+      referralId: session.escalatedReferralId,
+      reasonCode: session.decision.reason_code,
+    });
+  }
+}
+
 function resetForNewReferral(session: Session): void {
   session.draft = emptyDraft();
   session.stage = "COLLECTING";
@@ -502,6 +532,7 @@ function resetForNewReferral(session: Session): void {
   session.silentTurns = 0;
   session.finalized = false;
   session.referenceCode = null;
+  session.escalatedReferralId = null;
 }
 
 /**
