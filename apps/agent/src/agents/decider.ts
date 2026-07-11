@@ -36,23 +36,25 @@ export function decide(
 }
 
 // Deterministic fallback wording — used verbatim if the LLM call fails (rule 5).
+// Escalations reassure that a coordinator will call back at THIS number — Remy
+// never asks for a callback number (it uses the caller's own line).
 const STATIC_SPOKEN: Record<ReasonCode, string> = {
   ALL_CLEAR:
     "Wonderful — we're taking this one, and our coordinator will call the patient within the hour.",
   OUT_OF_AREA:
-    "That zip's just outside our usual area, so I don't want to promise on the spot — let me loop in our coordinator. What's the best number for a quick callback?",
+    "That zip's just outside our usual area, so I don't want to promise on the spot — I'm looping in our coordinator, and they'll call you right back at this number within fifteen minutes.",
   PAYER_NOT_ACCEPTED:
-    "I want to double-check the insurance before I promise anything, so I'm looping in our coordinator right now — what's the best number for a callback?",
+    "I want to double-check the insurance before I promise anything, so I'm looping in our coordinator now — they'll call you right back within fifteen minutes.",
   NO_CAPACITY:
-    "We're pretty tight on availability for that this week, so let me get our coordinator to confirm timing — what's the best callback number?",
+    "We're pretty tight on availability for that this week, so I'm getting our coordinator to confirm timing — they'll call you right back shortly.",
   MISSING_FIELDS:
-    "I want to make sure we've got everything right, so I'll have our coordinator follow up — what's the best number to reach you?",
+    "I want to make sure we've got everything right, so our coordinator will follow up with you directly in just a few minutes.",
   LOW_CONFIDENCE:
-    "I don't want to guess on this one, so I'm looping in our coordinator — what's the best number for a quick callback?",
+    "I don't want to guess on this one, so I'm looping in our coordinator — they'll call you right back within fifteen minutes.",
   CALLER_REQUESTED_HUMAN:
-    "Of course — let me get one of our coordinators to call you right back. What's the best number?",
+    "Of course — I'm getting one of our coordinators to call you right back at this number in just a few minutes.",
   MODEL_ERROR:
-    "Let me bring one of our coordinators in so nothing gets lost — what's the best number to reach you?",
+    "Let me bring one of our coordinators in so nothing gets lost — they'll call you right back shortly.",
 };
 
 const DISCIPLINE_WORDS: Record<string, string> = {
@@ -68,7 +70,7 @@ const WORDING_SYSTEM = `You are Remy, a warm, unhurried home-health intake coord
 The decision is ALREADY made by a deterministic gate — you ONLY word what Remy says out loud. Never change it or imply a different outcome.
 Use contractions. Keep it to 1–2 short, natural sentences. No quotes, no lists.
 - ACCEPT: sound genuinely pleased. Confirm we're taking the referral and that a coordinator will call the patient within the hour.
-- ESCALATE: reassuring, never bureaucratic. Say you don't want to guess, you're looping in a coordinator, and ask for the best callback number. Do NOT promise acceptance.
+- ESCALATE: reassuring, never bureaucratic. Say you don't want to guess and you're looping in a coordinator who will call them right back at this number shortly. Do NOT ask for a callback number, and do NOT promise acceptance.
 Refer to the patient by initial and age only — never a full name, and never a gendered pronoun you don't know (use "them" or "the patient").`;
 
 /**

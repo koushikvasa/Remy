@@ -361,58 +361,55 @@ async function decideTurn(session: Session): Promise<TurnResult> {
     };
   }
 
-  // Escalate → collect a callback number next (CLOSING).
+  // Escalate → the caller's own number IS the callback (no asking). Persist the
+  // referral and fire the coordinator callout right now.
+  return escalateNow(session, decision.spoken_reason);
+}
+
+/**
+ * Finish an escalation: use the caller's number as the callback, write the
+ * referral, and fire the coordinator callout (fire-and-forget, idempotent).
+ * Remy never asks for a callback number (P7 demo: caller-ID = callback).
+ */
+async function escalateNow(
+  session: Session,
+  spokenReason: string
+): Promise<TurnResult> {
   session.stage = "CLOSING";
-  session.awaitingCallback = true;
-  return { reply: decision.spoken_reason, done: false, escalated: true };
+
+  const cb = normalizeCallback(session.callerPhone);
+  session.callbackPhone = cb.ok ? cb.phone : session.callerPhone;
+
+  const referralId = await writeReferral(session, session.decision!);
+  session.escalatedReferralId = referralId;
+  session.referenceCode = referralId ? referralShortCode(referralId) : null;
+  await finalizeRun(session.runId, "escalated");
+  session.finalized = true;
+
+  await logEvent({
+    runId: session.runId,
+    stage: "CLOSING",
+    subAgent: "system",
+    payload: { event: "escalation_closed", callback_source: "caller_id" },
+  });
+
+  if (referralId) {
+    void notifyCoordinatorOfEscalation({
+      runId: session.runId,
+      referralId,
+      reasonCode: session.decision!.reason_code,
+    });
+  }
+
+  return { reply: `${spokenReason} Anything else I can help with?`, done: false, escalated: true };
 }
 
 async function closingTurn(
   session: Session,
   userText: string
 ): Promise<TurnResult> {
-  // A. Escalate: capture the callback number (first CLOSING turn after escalate).
-  if (session.awaitingCallback && session.decision) {
-    // Normalize to E.164 (BUG 2) — handles digits and spoken words; store the
-    // normalized value so both the DB and the source-notify leg dial correctly.
-    const norm = normalizeCallback(userText);
-    if (!norm.ok) {
-      console.warn(`[callback] could not normalize "${userText}" — storing raw`);
-    }
-    session.callbackPhone = norm.phone;
-    session.awaitingCallback = false;
-
-    const referralId = await writeReferral(session, session.decision);
-    session.escalatedReferralId = referralId;
-    session.referenceCode = referralId ? referralShortCode(referralId) : null;
-    await finalizeRun(session.runId, "escalated");
-    session.finalized = true;
-
-    await logEvent({
-      runId: session.runId,
-      stage: "CLOSING",
-      subAgent: "system",
-      payload: { event: "escalation_closed", callback_captured: true },
-    });
-
-    // Fire the coordinator callout NOW (BUG 1), fire-and-forget: the referral is
-    // persisted and the callback captured, so a hang-up right after must not
-    // skip it. Idempotent via the callout_at claim; guarded (never throws).
-    if (referralId) {
-      void notifyCoordinatorOfEscalation({
-        runId: session.runId,
-        referralId,
-        reasonCode: session.decision.reason_code,
-      });
-    }
-
-    const reply =
-      "Perfect — you'll hear from us within fifteen minutes. Thanks so much for your patience. Anything else I can help with?";
-    session.messages.push({ role: "assistant", content: reply });
-    return { reply, done: false };
-  }
-
-  // B. Post-decision conversation.
+  // Post-decision conversation (the escalation callout already fired at the
+  // decision — the caller's own number is the callback, so nothing to capture).
 
   // Silence / backchannel → after two, close warmly.
   if (isPureFiller(userText)) {
@@ -545,8 +542,6 @@ async function escalateToHuman(
 ): Promise<TurnResult> {
   const decision = staticEscalation(reasonCode);
   session.decision = decision;
-  session.stage = "CLOSING";
-  session.awaitingCallback = true;
   session.unparseableStreak = 0;
 
   await logEvent({
@@ -556,7 +551,7 @@ async function escalateToHuman(
     payload: { decision: "escalate", reason_code: reasonCode, source: "router" },
   });
   session.messages.push({ role: "assistant", content: decision.spoken_reason });
-  return { reply: decision.spoken_reason, done: false, escalated: true };
+  return escalateNow(session, decision.spoken_reason);
 }
 
 async function escalate(session: Session, err: unknown): Promise<TurnResult> {
