@@ -35,7 +35,7 @@ export interface Session {
 // GREETING is delivered via TwiML welcomeGreeting on a real call; the simulator
 // prints it. Unknown-caller wording (caller lookup / personalization is P5).
 export const GREETING =
-  "You've reached Sunrise Home Health's referral line — this is Remy. I can take your referral right now. Who am I speaking with, and what have you got?";
+  "Thanks for calling Sunrise Home Health — this is Remy! Who am I speaking with, and what've you got for me?";
 
 export function emptyDraft(): ReferralDraft {
   return {

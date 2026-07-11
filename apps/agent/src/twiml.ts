@@ -20,9 +20,9 @@ const DEFAULT_VOICE = "XrExE9yKIg1WjnnlVkGX"; // ElevenLabs "Matilda"
 export function buildGreeting(source: CallerSource | null): string {
   if (source?.contact_name) {
     const first = source.contact_name.split(" ")[0];
-    return `${AGENCY} — hi ${first}, it's Remy. Do you have a referral for us?`;
+    return `${AGENCY}, this is Remy — hi ${first}! What have you got for me today?`;
   }
-  return `${AGENCY} referral line, this is Remy — I can take your referral right now.`;
+  return `Thanks for calling ${AGENCY} — this is Remy. I can take your referral right now; who am I speaking with?`;
 }
 
 export function escapeXml(s: string): string {
@@ -39,6 +39,7 @@ export function twimlConnect(opts: {
   greeting: string;
   sourceId: string | null;
 }): string {
+  const provider = process.env.REMY_TTS_PROVIDER || "ElevenLabs";
   const voice = process.env.REMY_VOICE || DEFAULT_VOICE;
   const param = opts.sourceId
     ? `\n      <Parameter name="source_id" value="${escapeXml(opts.sourceId)}" />`
@@ -51,7 +52,7 @@ export function twimlConnect(opts: {
   <Connect>
     <ConversationRelay url="${escapeXml(opts.wssUrl)}" welcomeGreeting="${escapeXml(
       opts.greeting
-    )}" ttsProvider="ElevenLabs" voice="${escapeXml(
+    )}" ttsProvider="${escapeXml(provider)}" voice="${escapeXml(
       voice
     )}" interruptible="speech" events="tokens-played">${param}
     </ConversationRelay>

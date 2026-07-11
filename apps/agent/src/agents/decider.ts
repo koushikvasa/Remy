@@ -38,21 +38,21 @@ export function decide(
 // Deterministic fallback wording — used verbatim if the LLM call fails (rule 5).
 const STATIC_SPOKEN: Record<ReasonCode, string> = {
   ALL_CLEAR:
-    "Good news — we can take this referral. Our coordinator will call the patient within the hour to schedule.",
+    "Wonderful — we're taking this one, and our coordinator will call the patient within the hour.",
   OUT_OF_AREA:
-    "That ZIP looks to be just outside our service area, so I'll have our coordinator confirm and follow up. What's the best callback number?",
+    "That zip's just outside our usual area, so I don't want to promise on the spot — let me loop in our coordinator. What's the best number for a quick callback?",
   PAYER_NOT_ACCEPTED:
-    "I want to make sure we handle the insurance correctly, so I'll have our coordinator confirm coverage and call right back. What's the best callback number?",
+    "I want to double-check the insurance before I promise anything, so I'm looping in our coordinator right now — what's the best number for a callback?",
   NO_CAPACITY:
-    "We're tight on availability for that discipline this week, so I'll have our coordinator confirm timing and follow up. What's the best callback number?",
+    "We're pretty tight on availability for that this week, so let me get our coordinator to confirm timing — what's the best callback number?",
   MISSING_FIELDS:
-    "I want to be sure I have everything, so I'll have our coordinator follow up to complete the details. What's the best callback number?",
+    "I want to make sure we've got everything right, so I'll have our coordinator follow up — what's the best number to reach you?",
   LOW_CONFIDENCE:
-    "I want to be certain I've got this exactly right, so I'll have our coordinator confirm and call you back. What's the best callback number?",
+    "I don't want to guess on this one, so I'm looping in our coordinator — what's the best number for a quick callback?",
   CALLER_REQUESTED_HUMAN:
-    "Of course — I'll get our intake coordinator to call you right back. What's the best callback number?",
+    "Of course — let me get one of our coordinators to call you right back. What's the best number?",
   MODEL_ERROR:
-    "Let me connect you with our intake coordinator to make sure nothing is lost.",
+    "Let me bring one of our coordinators in so nothing gets lost — what's the best number to reach you?",
 };
 
 const DISCIPLINE_WORDS: Record<string, string> = {
@@ -64,12 +64,12 @@ const DISCIPLINE_WORDS: Record<string, string> = {
   MSW: "medical social work",
 };
 
-const WORDING_SYSTEM = `You are Remy, a warm, efficient voice agent on a home-health referral phone call.
-The decision has ALREADY been made by a deterministic gate. You do NOT decide anything — you only word what Remy says out loud.
-Keep it SHORT and natural for speech — one sentence for accept, at most two for escalate. No quotes, no lists.
-- ACCEPT: warmly confirm we're taking the referral and that a coordinator will call the patient within the hour.
-- ESCALATE: do NOT fake a yes or promise acceptance. Briefly acknowledge, say a coordinator will follow up, and ASK for the best callback number.
-Never state a patient's full name — reference only initial and age.`;
+const WORDING_SYSTEM = `You are Remy, a warm, unhurried home-health intake coordinator who's done this for years. You sound like a real person on the phone, not a form.
+The decision is ALREADY made by a deterministic gate — you ONLY word what Remy says out loud. Never change it or imply a different outcome.
+Use contractions. Keep it to 1–2 short, natural sentences. No quotes, no lists.
+- ACCEPT: sound genuinely pleased. Confirm we're taking the referral and that a coordinator will call the patient within the hour.
+- ESCALATE: reassuring, never bureaucratic. Say you don't want to guess, you're looping in a coordinator, and ask for the best callback number. Do NOT promise acceptance.
+Refer to the patient by initial and age only — never a full name, and never a gendered pronoun you don't know (use "them" or "the patient").`;
 
 /**
  * A router-level escalation (caller asked for a human, repeated unparseable

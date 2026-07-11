@@ -3,6 +3,7 @@ import { Session } from "./session";
 import { extract, DRAFT_FIELDS, ModelError } from "./agents/extractor";
 import {
   askForField,
+  nextQuestion,
   confirmPrompt,
   correctionPrompt,
   politeReprompt,
@@ -13,6 +14,7 @@ import { answerOffscript } from "./agents/offscript";
 import { runFitCheck } from "./agents/fitchecker";
 import { decide, wordDecision, staticEscalation } from "./agents/decider";
 import { writeReferral } from "./referrals";
+import { referralShortCode } from "./coordinators";
 import { notifyCoordinatorOfEscalation } from "./escalation";
 import { logEvent, finalizeRun } from "./telemetry";
 
@@ -202,10 +204,12 @@ async function collectTurn(
     return escalateToHuman(session, "CALLER_REQUESTED_HUMAN");
   }
 
-  // Ask for exactly ONE missing field this turn.
+  // Ask for exactly ONE missing field this turn (with an acknowledgment).
   const field = missing[0]!;
   const reply =
-    session.unparseableStreak === 2 ? politeReprompt(field) : askForField(field);
+    session.unparseableStreak === 2
+      ? politeReprompt(field)
+      : nextQuestion(session.draft, out.updated_fields, field);
   session.messages.push({ role: "assistant", content: reply });
   await logEvent({
     runId: session.runId,
@@ -286,10 +290,14 @@ async function decideTurn(session: Session): Promise<TurnResult> {
 
   if (decision.decision === "accept") {
     session.stage = "CLOSING";
-    await writeReferral(session, decision);
+    const referralId = await writeReferral(session, decision);
     await finalizeRun(session.runId, "completed");
     session.finalized = true;
-    return { reply: decision.spoken_reason, done: true };
+    // Weave in the reference code (deterministic; doesn't touch the gate).
+    const reply = referralId
+      ? `${decision.spoken_reason} Your reference is ${referralShortCode(referralId)}.`
+      : decision.spoken_reason;
+    return { reply, done: true };
   }
 
   session.stage = "CLOSING";
@@ -330,7 +338,7 @@ async function closingTurn(
   }
 
   const reply =
-    "Thanks — I've logged everything and our coordinator will call you shortly. Take care.";
+    "Perfect — you'll hear from us within fifteen minutes. Thanks so much for your patience.";
   session.messages.push({ role: "assistant", content: reply });
   return { reply, done: true };
 }

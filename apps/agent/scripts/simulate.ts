@@ -76,9 +76,10 @@ async function main(): Promise<void> {
     }
     if (text === "exit" || text === "quit") break;
 
+    console.log(`\nCaller> ${text}`);
     const res = await handleTurn(session, text);
     if (typeof res.latencyMs === "number") latencies.push(res.latencyMs);
-    console.log(`\nRemy> ${res.reply}`);
+    console.log(`Remy>   ${res.reply}`);
     printDraft(session.draft);
     if (session.decision) {
       console.log(
