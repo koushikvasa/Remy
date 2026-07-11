@@ -14,28 +14,38 @@ import { EmptyState } from "./EmptyState";
 import { ReferralQueue } from "./ReferralQueue";
 import { EventFeed } from "./EventFeed";
 import { EconomicsStrip } from "./EconomicsStrip";
+import { ThemeToggle } from "./ThemeToggle";
 
 // How long a finished call stays in the hero before returning to the empty state.
 const RECENT_WINDOW_MS = 120_000;
 
 function TopBar({ activeCount }: { activeCount: number }) {
+  const live = activeCount > 0;
   return (
     <header className="flex items-center justify-between px-1">
       <div className="flex items-baseline gap-3">
-        <h1 className="font-display text-lg font-semibold tracking-tight text-ink">
+        <h1 className="font-display text-xl font-semibold tracking-tight text-ink">
           Remy
         </h1>
-        <span className="font-mono text-[10px] uppercase tracking-[0.35em] text-muted">
+        <span className="font-mono text-[11px] uppercase tracking-[0.3em] text-muted">
           Command Center
         </span>
       </div>
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted">
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${
-            activeCount > 0 ? "live-pulse bg-signal" : "bg-hairline"
-          }`}
-        />
-        {activeCount > 0 ? `${activeCount} live` : "idle"}
+      <div className="flex items-center gap-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 font-mono text-xs text-muted"
+        >
+          <span
+            aria-hidden="true"
+            className={`h-2 w-2 rounded-full ${
+              live ? "live-pulse bg-signal" : "bg-hairline"
+            }`}
+          />
+          {live ? `${activeCount} call${activeCount > 1 ? "s" : ""} live` : "Idle — line open"}
+        </div>
+        <ThemeToggle />
       </div>
     </header>
   );
@@ -186,7 +196,11 @@ export function CommandCenter() {
   const activeCount = runs.filter((r) => r.status === "active").length;
 
   return (
-    <main className="mx-auto flex h-screen max-w-[1600px] flex-col gap-4 p-4">
+    <main
+      id="main"
+      aria-label="Remy Command Center"
+      className="mx-auto flex h-screen max-w-[1600px] flex-col gap-4 p-4"
+    >
       <TopBar activeCount={activeCount} />
 
       <EconomicsStrip referrals={referrals} runs={runs} />
