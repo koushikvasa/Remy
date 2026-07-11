@@ -12,19 +12,30 @@ const MARK: Record<ChipInfo["state"], string> = {
   fail: "✗",
 };
 
+const STATE_WORD: Record<ChipInfo["state"], string> = {
+  pending: "checking",
+  pass: "passed",
+  fail: "needs review",
+};
+
 function Chip({ label, info }: { label: string; info: ChipInfo }) {
+  const detail = info.detail ?? "pending";
   return (
     <div
-      className={`flex-1 rounded border px-3 py-2 transition-colors ${STATE_STYLE[info.state]}`}
+      role="status"
+      aria-label={`${label}: ${STATE_WORD[info.state]}${info.detail ? ` — ${info.detail}` : ""}`}
+      className={`flex-1 rounded-md border px-3 py-2 transition-colors ${STATE_STYLE[info.state]}`}
     >
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-wider">
+        <span className="font-mono text-[11px] font-medium uppercase tracking-wider">
           {label}
         </span>
-        <span className="font-mono text-sm leading-none">{MARK[info.state]}</span>
+        <span aria-hidden="true" className="font-mono text-sm leading-none">
+          {MARK[info.state]}
+        </span>
       </div>
       <div className="mt-1 truncate font-mono text-[11px] text-muted">
-        {info.detail ?? "pending"}
+        {detail}
       </div>
     </div>
   );

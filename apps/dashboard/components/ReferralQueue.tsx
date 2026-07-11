@@ -11,12 +11,15 @@ export function ReferralQueue({
   nowMs: number;
 }) {
   return (
-    <section className="flex min-h-[18rem] flex-col rounded-md border border-hairline bg-panel lg:min-h-0">
+    <section
+      aria-label="Referral queue"
+      className="flex min-h-[18rem] flex-col rounded-md border border-hairline bg-panel shadow-panel lg:min-h-0"
+    >
       <header className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
-        <h3 className="font-display text-sm font-semibold tracking-tight">
+        <h2 className="font-display text-sm font-semibold tracking-tight">
           Referral Queue
-        </h3>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+        </h2>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-muted">
           mock EMR
         </span>
       </header>
@@ -48,16 +51,16 @@ export function ReferralQueue({
             <div className="mt-1 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 truncate font-mono text-[11px] text-muted">
                 <span className="truncate">{r.payer_raw ?? "—"}</span>
-                <span className="text-hairline">·</span>
+                <span aria-hidden="true" className="text-muted/50">·</span>
                 <span>{r.zip ?? "—"}</span>
                 {r.reason_code && (
                   <>
-                    <span className="text-hairline">·</span>
+                    <span aria-hidden="true" className="text-muted/50">·</span>
                     <span className="text-muted/80">{r.reason_code}</span>
                   </>
                 )}
               </div>
-              <span className="shrink-0 font-mono text-[10px] text-muted">
+              <span className="shrink-0 font-mono text-[11px] text-muted">
                 {timeAgo(r.created_at, nowMs)}
               </span>
             </div>

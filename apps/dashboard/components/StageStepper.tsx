@@ -29,7 +29,7 @@ export function StageStepper({
   terminalStatus: "completed" | "escalated" | "failed" | null;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-y-2">
+    <ol className="flex flex-wrap items-center gap-y-2" aria-label="Call progress">
       {STEPPER.map((label, i) => {
         const done = i < stepIndex;
         const current = i === stepIndex;
@@ -54,27 +54,35 @@ export function StageStepper({
             : "border-hairline bg-panel text-muted";
 
         return (
-          <div key={label} className="flex items-center gap-2">
+          <li
+            key={label}
+            className="flex items-center gap-2"
+            aria-current={current ? "step" : undefined}
+          >
             <div className="flex items-center gap-1.5">
               <span
-                className={`flex h-4 w-4 items-center justify-center rounded-full border text-[9px] transition-colors ${dotClass}`}
+                aria-hidden="true"
+                className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] transition-colors ${dotClass}`}
               >
                 {done ? "✓" : i + 1}
               </span>
               <span
-                className={`font-mono text-[10px] uppercase tracking-wider transition-colors ${labelClass}`}
+                className={`font-mono text-[11px] font-medium uppercase tracking-wider transition-colors ${labelClass}`}
               >
                 {label}
               </span>
+              {current && <span className="sr-only">(current stage)</span>}
+              {done && <span className="sr-only">(done)</span>}
             </div>
             {i < STEPPER.length - 1 && (
               <span
+                aria-hidden="true"
                 className={`mx-1 h-px w-5 ${done ? "bg-signal/40" : "bg-hairline"}`}
               />
             )}
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ol>
   );
 }

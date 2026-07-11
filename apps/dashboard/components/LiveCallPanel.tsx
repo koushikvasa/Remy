@@ -41,7 +41,10 @@ export function LiveCallPanel({
   const contact = source?.contact_name ?? null;
 
   return (
-    <section className="flex h-full flex-col gap-4 rounded-md border border-hairline bg-panel p-4 sm:gap-5 sm:p-5">
+    <section
+      aria-label={`Live call — ${orgName}`}
+      className="flex h-full flex-col gap-4 rounded-md border border-hairline bg-panel p-4 shadow-panel sm:gap-5 sm:p-5"
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -70,7 +73,7 @@ export function LiveCallPanel({
 
       {/* Referral draft grid — fills live */}
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted">
+        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted">
           Referral Draft
         </div>
         <DraftGrid draft={draft} />
@@ -78,7 +81,7 @@ export function LiveCallPanel({
 
       {/* Fit-check chips */}
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted">
+        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted">
           Fit Checks
         </div>
         <FitChips chips={chips} />

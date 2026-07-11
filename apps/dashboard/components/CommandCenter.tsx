@@ -219,11 +219,10 @@ export function CommandCenter() {
           )}
         </div>
 
-        <div className="flex flex-col gap-3 sm:gap-4 lg:grid lg:min-h-0 lg:grid-rows-2">
-          <ReferralQueue referrals={referrals} nowMs={nowMs} />
-          <EventFeed events={focusEvents} />
-        </div>
+        <ReferralQueue referrals={referrals} nowMs={nowMs} />
       </div>
+
+      <EventFeed events={focusEvents} />
     </main>
   );
 }

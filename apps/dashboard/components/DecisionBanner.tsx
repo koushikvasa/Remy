@@ -14,7 +14,11 @@ export function DecisionBanner({ decision }: { decision: DecisionView }) {
   const headline = accepted ? "text-signal" : "text-amber";
 
   return (
-    <div className={`rounded border px-4 py-3 ${style}`}>
+    <div
+      role="status"
+      aria-live="polite"
+      className={`rounded-md border px-4 py-3 shadow-panel ${style}`}
+    >
       <div className={`font-display text-lg font-semibold tracking-tight ${headline}`}>
         {verb}
         <span className="ml-2 font-mono text-sm font-normal text-muted">
@@ -22,7 +26,7 @@ export function DecisionBanner({ decision }: { decision: DecisionView }) {
         </span>
       </div>
       {decision.spoken_reason && (
-        <p className="mt-1 text-sm italic text-ink/80">
+        <p className="mt-1 text-sm italic text-ink/90">
           “{decision.spoken_reason}”
         </p>
       )}
