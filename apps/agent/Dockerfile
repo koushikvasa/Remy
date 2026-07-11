@@ -8,11 +8,11 @@ RUN corepack enable
 WORKDIR /app
 
 # Workspace manifests first for layer caching.
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/agent/package.json ./apps/agent/
 
-RUN pnpm install --filter @remy/agent...
+RUN pnpm install --filter @remy/agent... --frozen-lockfile
 
 # Source.
 COPY packages/shared ./packages/shared
