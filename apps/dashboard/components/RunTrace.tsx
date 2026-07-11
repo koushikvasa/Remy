@@ -14,23 +14,30 @@ import { LiveCallPanel } from "./LiveCallPanel";
 function FullEventTable({ events }: { events: RunEventRow[] }) {
   const sorted = [...events].sort((a, b) => a.seq - b.seq);
   return (
-    <section className="rounded-md border border-hairline bg-panel">
+    <section
+      aria-label="Full event trace"
+      className="rounded-md border border-hairline bg-panel shadow-panel"
+    >
       <header className="border-b border-hairline px-4 py-2.5">
-        <h3 className="font-display text-sm font-semibold tracking-tight">
+        <h2 className="font-display text-sm font-semibold tracking-tight">
           Full Event Trace
-        </h3>
+        </h2>
       </header>
       <div className="overflow-x-auto">
         <table className="w-full font-mono text-[11px]">
+          <caption className="sr-only">
+            Chronological telemetry for this run: sequence, stage, sub-agent,
+            tool, latency, confidence, and payload.
+          </caption>
           <thead>
             <tr className="border-b border-hairline text-left text-muted">
-              <th className="px-3 py-2 font-normal">seq</th>
-              <th className="px-3 py-2 font-normal">stage</th>
-              <th className="px-3 py-2 font-normal">sub_agent</th>
-              <th className="px-3 py-2 font-normal">tool</th>
-              <th className="px-3 py-2 text-right font-normal">latency</th>
-              <th className="px-3 py-2 text-right font-normal">conf</th>
-              <th className="px-3 py-2 font-normal">payload</th>
+              <th scope="col" className="px-3 py-2 font-normal">seq</th>
+              <th scope="col" className="px-3 py-2 font-normal">stage</th>
+              <th scope="col" className="px-3 py-2 font-normal">sub_agent</th>
+              <th scope="col" className="px-3 py-2 font-normal">tool</th>
+              <th scope="col" className="px-3 py-2 text-right font-normal">latency</th>
+              <th scope="col" className="px-3 py-2 text-right font-normal">conf</th>
+              <th scope="col" className="px-3 py-2 font-normal">payload</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
@@ -104,8 +111,11 @@ export function RunTrace({ runId }: { runId: string }) {
   }, [runId]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 p-4">
-      <header className="flex items-center justify-between px-1">
+    <main
+      id="main"
+      className="mx-auto flex min-h-[100dvh] max-w-[1600px] flex-col gap-3 overflow-x-hidden p-3 sm:gap-4 sm:p-4"
+    >
+      <header className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-baseline gap-3">
           <Link href="/" className="font-mono text-xs text-muted hover:text-ink">
             ← Command Center
@@ -114,7 +124,7 @@ export function RunTrace({ runId }: { runId: string }) {
             Decision Trace
           </span>
         </div>
-        <span className="font-mono text-[11px] text-muted">{runId}</span>
+        <span className="truncate font-mono text-[11px] text-muted">{runId}</span>
       </header>
 
       {notFound && (

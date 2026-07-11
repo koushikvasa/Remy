@@ -4,11 +4,12 @@ import type { RunEventRow, RunRow, SourceRow } from "../lib/types";
 import {
   deriveChips,
   deriveDecision,
+  deriveDecisionAt,
   deriveDraft,
   deriveEscalationStatus,
   deriveStepIndex,
 } from "../lib/runState";
-import { durationLabel, formatPhone } from "../lib/format";
+import { durationLabel, formatPhone, referenceCode } from "../lib/format";
 import { StatusPill } from "./pills";
 import { StageStepper } from "./StageStepper";
 import { DraftGrid } from "./DraftGrid";
@@ -35,31 +36,57 @@ export function LiveCallPanel({
   const terminalStatus =
     run.status === "active" ? null : (run.status as "completed" | "escalated" | "failed");
 
-  const endMs = run.ended_at ? new Date(run.ended_at).getTime() : nowMs;
+  // Time-to-decision stopwatch: ticks live, then freezes at the decision event
+  // (the pitch beat — "42 seconds" vs the ~45-minute industry norm).
+  const decisionAt = deriveDecisionAt(events);
+  const frozen = decisionAt != null;
+  const clockMs =
+    decisionAt ?? (run.ended_at ? new Date(run.ended_at).getTime() : nowMs);
+  const accepted = decision?.decision === "accept";
+  const clockColor = frozen
+    ? accepted
+      ? "text-signal"
+      : "text-amber"
+    : "text-ink";
 
   const orgName = source?.org_name ?? "Inbound referral";
   const contact = source?.contact_name ?? null;
 
   return (
-    <section className="flex h-full flex-col gap-5 rounded-md border border-hairline bg-panel p-5">
+    <section
+      aria-label={`Live call — ${orgName}`}
+      className="flex h-full flex-col gap-4 rounded-md border border-hairline bg-panel p-4 shadow-panel sm:gap-5 sm:p-5"
+    >
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-xl font-semibold tracking-tight text-ink">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate font-display text-lg font-semibold tracking-tight text-ink sm:text-xl">
               {orgName}
             </h2>
-            {contact && <span className="text-sm text-muted">· {contact}</span>}
+            {contact && (
+              <span className="shrink-0 text-sm text-muted">· {contact}</span>
+            )}
           </div>
           <div className="mt-1 font-mono text-xs text-muted">
             {formatPhone(run.caller_phone)}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-1">
           <StatusPill status={run.status} />
-          <div className="font-mono text-2xl tabular-nums text-ink">
-            {durationLabel(run.started_at, endMs)}
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+            {frozen ? "Time to decision" : "Elapsed"}
+          </span>
+          <div
+            className={`font-mono text-2xl tabular-nums sm:text-3xl ${clockColor}`}
+          >
+            {durationLabel(run.started_at, clockMs)}
           </div>
+          {frozen && (
+            <span className="font-mono text-[10px] text-muted">
+              vs ~45 min industry
+            </span>
+          )}
         </div>
       </div>
 
@@ -68,7 +95,7 @@ export function LiveCallPanel({
 
       {/* Referral draft grid — fills live */}
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted">
+        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted">
           Referral Draft
         </div>
         <DraftGrid draft={draft} />
@@ -76,7 +103,7 @@ export function LiveCallPanel({
 
       {/* Fit-check chips */}
       <div>
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted">
+        <div className="mb-2 font-mono text-[11px] font-medium uppercase tracking-wider text-muted">
           Fit Checks
         </div>
         <FitChips chips={chips} />
@@ -85,7 +112,10 @@ export function LiveCallPanel({
       {/* Decision banner */}
       <div className="mt-auto">
         {decision ? (
-          <DecisionBanner decision={decision} />
+          <DecisionBanner
+            decision={decision}
+            referenceCode={referenceCode(run.run_id)}
+          />
         ) : (
           <div className="rounded border border-dashed border-hairline px-4 py-3 font-mono text-xs text-muted">
             Awaiting decision…

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getBrowserClient } from "../lib/supabase";
 import type {
+  MedicalAssistantRow,
   ReferralRow,
   RunEventRow,
   RunRow,
@@ -14,28 +15,39 @@ import { EmptyState } from "./EmptyState";
 import { ReferralQueue } from "./ReferralQueue";
 import { EventFeed } from "./EventFeed";
 import { EconomicsStrip } from "./EconomicsStrip";
+import { ThemeToggle } from "./ThemeToggle";
+import { MedicalAssistants } from "./MedicalAssistants";
+import { Logo } from "./Logo";
 
 // How long a finished call stays in the hero before returning to the empty state.
 const RECENT_WINDOW_MS = 120_000;
 
 function TopBar({ activeCount }: { activeCount: number }) {
+  const live = activeCount > 0;
   return (
     <header className="flex items-center justify-between px-1">
-      <div className="flex items-baseline gap-3">
-        <h1 className="font-display text-lg font-semibold tracking-tight text-ink">
-          Remy
-        </h1>
-        <span className="font-mono text-[10px] uppercase tracking-[0.35em] text-muted">
+      <div className="flex min-w-0 items-center gap-3">
+        <h1 className="sr-only">Remy Command Center</h1>
+        <Logo />
+        <span className="hidden font-mono text-[11px] uppercase tracking-[0.3em] text-muted sm:inline">
           Command Center
         </span>
       </div>
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted">
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${
-            activeCount > 0 ? "live-pulse bg-signal" : "bg-hairline"
-          }`}
-        />
-        {activeCount > 0 ? `${activeCount} live` : "idle"}
+      <div className="flex items-center gap-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 font-mono text-xs text-muted"
+        >
+          <span
+            aria-hidden="true"
+            className={`h-2 w-2 rounded-full ${
+              live ? "live-pulse bg-signal" : "bg-hairline"
+            }`}
+          />
+          {live ? `${activeCount} call${activeCount > 1 ? "s" : ""} live` : "Idle — line open"}
+        </div>
+        <ThemeToggle />
       </div>
     </header>
   );
@@ -46,6 +58,7 @@ export function CommandCenter() {
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [sourcesByPhone, setSourcesByPhone] = useState<Record<string, SourceRow>>({});
   const [eventsByRun, setEventsByRun] = useState<Record<string, RunEventRow[]>>({});
+  const [assistants, setAssistants] = useState<MedicalAssistantRow[]>([]);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   // 1Hz clock for durations / "time ago".
@@ -61,16 +74,20 @@ export function CommandCenter() {
     let cancelled = false;
 
     async function load() {
-      const [runsRes, refsRes, srcRes] = await Promise.all([
+      const [runsRes, refsRes, srcRes, maRes] = await Promise.all([
         supabase.from("runs").select("*").order("started_at", { ascending: false }).limit(25),
         supabase.from("referrals").select("*").order("created_at", { ascending: false }).limit(25),
         supabase.from("referral_sources").select("*"),
+        // Table may not exist yet — supabase returns an error, not a throw, so
+        // this is safe; the component falls back to sample data when empty.
+        supabase.from("medical_assistants").select("*").order("code"),
       ]);
       if (cancelled) return;
 
       const runsList = (runsRes.data ?? []) as RunRow[];
       setRuns(runsList);
       setReferrals((refsRes.data ?? []) as ReferralRow[]);
+      setAssistants((maRes.data ?? []) as MedicalAssistantRow[]);
 
       const byPhone: Record<string, SourceRow> = {};
       for (const s of (srcRes.data ?? []) as SourceRow[]) byPhone[s.phone] = s;
@@ -137,6 +154,24 @@ export function CommandCenter() {
           });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "medical_assistants" },
+        (payload) => {
+          const row = payload.new as MedicalAssistantRow;
+          if (!row?.id) return;
+          // Availability flips update the roster row in place.
+          setAssistants((prev) => {
+            const idx = prev.findIndex((a) => a.id === row.id);
+            if (idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = row;
+              return copy;
+            }
+            return [...prev, row];
+          });
+        }
+      )
       .subscribe();
 
     return () => {
@@ -186,30 +221,40 @@ export function CommandCenter() {
   const activeCount = runs.filter((r) => r.status === "active").length;
 
   return (
-    <main className="mx-auto flex h-screen max-w-[1600px] flex-col gap-4 p-4">
-      <TopBar activeCount={activeCount} />
+    <main
+      id="main"
+      aria-label="Remy Command Center"
+      className="mx-auto flex min-h-[100dvh] max-w-[1600px] flex-col gap-3 overflow-x-hidden p-3 sm:gap-4 sm:p-4"
+    >
+      {/* Console — fills the viewport on desktop with internal-scroll panels;
+          flows naturally (page scrolls) on smaller screens. */}
+      <div className="flex flex-col gap-3 sm:gap-4 lg:h-[calc(100dvh-2rem)] lg:min-h-0 lg:overflow-hidden">
+        <TopBar activeCount={activeCount} />
 
-      <EconomicsStrip referrals={referrals} runs={runs} />
+        <EconomicsStrip referrals={referrals} runs={runs} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="min-h-0 lg:col-span-2">
-          {showHero && focusRun ? (
-            <LiveCallPanel
-              run={focusRun}
-              events={focusEvents}
-              source={source}
-              nowMs={nowMs}
-            />
-          ) : (
-            <EmptyState />
-          )}
-        </div>
+        <div className="grid flex-1 grid-cols-1 gap-3 sm:gap-4 lg:min-h-0 lg:grid-cols-3">
+          <div className="min-h-[60vh] lg:col-span-2 lg:min-h-0">
+            {showHero && focusRun ? (
+              <LiveCallPanel
+                run={focusRun}
+                events={focusEvents}
+                source={source}
+                nowMs={nowMs}
+              />
+            ) : (
+              <EmptyState />
+            )}
+          </div>
 
-        <div className="grid min-h-0 grid-rows-2 gap-4">
           <ReferralQueue referrals={referrals} nowMs={nowMs} />
-          <EventFeed events={focusEvents} />
         </div>
+
+        <EventFeed events={focusEvents} />
       </div>
+
+      {/* Staffing roster — scrolls into view below the console. */}
+      <MedicalAssistants assistants={assistants} />
     </main>
   );
 }

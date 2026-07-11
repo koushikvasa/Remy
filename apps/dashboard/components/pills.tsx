@@ -13,7 +13,10 @@ export function StatusPill({ status }: { status: RunStatus }) {
       className={`inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider ${STATUS_STYLES[status]}`}
     >
       {status === "active" && (
-        <span className="live-pulse h-1.5 w-1.5 rounded-full bg-signal" />
+        <span
+          aria-hidden="true"
+          className="live-pulse h-1.5 w-1.5 rounded-full bg-signal"
+        />
       )}
       {status}
     </span>

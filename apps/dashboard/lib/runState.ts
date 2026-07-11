@@ -140,6 +140,16 @@ export function isEscalationReason(decision: DecisionView | null): boolean {
   return decision?.decision !== "accept";
 }
 
+/** Timestamp (ms) of the decision event, or null if no decision landed yet.
+ * Used to freeze the hero stopwatch at time-to-decision. */
+export function deriveDecisionAt(events: RunEventRow[]): number | null {
+  const ev = sortedBySeq(events)
+    .filter((e) => e.sub_agent === "decider")
+    .pop();
+  if (!ev?.created_at) return null;
+  return new Date(ev.created_at).getTime();
+}
+
 /** Callout chain status from the run's events (P6): called → assigned → notified. */
 export function deriveEscalationStatus(
   events: RunEventRow[]

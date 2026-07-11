@@ -2,14 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/*
+ * Theme tokens. `:root` is the dark console (the default / demo look). The
+ * light theme is a clean, high-contrast daylight variant. A no-flash inline
+ * script in layout.tsx sets `data-theme` on <html> before first paint; the
+ * ThemeToggle flips it and persists the choice.
+ *
+ * All channel values are space-separated RGB so Tailwind's `<alpha-value>`
+ * (e.g. bg-signal/10) works in both themes.
+ */
+/* Palette derived from the Remy logo: deep navy, teal/cyan accent, cream paper. */
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
+  --color-base: 9 13 22; /* #090D16 — deep navy-black */
+  --color-panel: 18 24 38; /* #121826 — navy panel */
+  --color-hairline: 37 48 68; /* #253044 — navy hairline */
+  --color-ink: 233 238 245; /* #E9EEF5 */
+  --color-muted: 148 161 181; /* #94A1B5 — AA on the navy base */
+  --color-signal: 47 199 218; /* #2FC7DA — teal/cyan accent (from the logo) */
+  --color-amber: 255 180 84; /* #FFB454 — escalations */
+  --color-danger: 255 92 92; /* #FF5C5C — failures */
+  --color-focus: 47 199 218;
+  --shadow-rgb: 0 0 0;
+  --scrollbar-thumb: 40 52 72;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-base: 242 240 234; /* #F2F0EA — warm cream (logo paper) */
+  --color-panel: 255 255 255; /* #FFFFFF */
+  --color-hairline: 221 216 205; /* #DDD8CD — warm hairline */
+  --color-ink: 23 37 94; /* #17255E — deep navy (the wordmark) */
+  --color-muted: 85 97 125; /* #55617D — navy-grey, AA on cream/white */
+  --color-signal: 15 124 143; /* #0F7C8F — deep teal, AA as small text */
+  --color-amber: 166 96 0; /* #A66000 — dark amber on light */
+  --color-danger: 197 32 32; /* #C52020 */
+  --color-focus: 15 124 143;
+  --shadow-rgb: 23 37 94;
+  --scrollbar-thumb: 205 210 200;
 }
 
 html,
 body {
-  background-color: #0b0f14;
-  color: #e8edf2;
+  background-color: rgb(var(--color-base));
+  color: rgb(var(--color-ink));
 }
 
 body {
@@ -17,19 +54,32 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Visible, consistent keyboard focus everywhere interactive. */
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgb(var(--color-focus));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
 /* Field-fill flash — the money shot when an extractor event fills a slot. */
 @keyframes fillflash {
   0% {
-    background-color: rgba(61, 220, 132, 0.16);
-    border-color: #3ddc84;
+    background-color: rgb(var(--color-signal) / 0.16);
+    border-color: rgb(var(--color-signal));
   }
   100% {
     background-color: transparent;
-    border-color: #1e2630;
+    border-color: rgb(var(--color-hairline));
   }
 }
 .fill-flash {
-  animation: fillflash 0.32s ease-out;
+  animation: fillflash 0.5s ease-out;
 }
 
 /* Live status dot pulse — the only ambient motion. */
@@ -46,21 +96,27 @@ body {
   animation: livepulse 1.4s ease-in-out infinite;
 }
 
-/* Feed / stepper transitions are handled by Tailwind `transition`. */
 @media (prefers-reduced-motion: reduce) {
   .fill-flash,
   .live-pulse {
     animation: none !important;
   }
+  * {
+    scroll-behavior: auto !important;
+  }
 }
 
-/* Thin console scrollbars. */
+/* Thin console scrollbars, theme-aware. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--scrollbar-thumb)) transparent;
+}
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e2630;
+  background: rgb(var(--scrollbar-thumb));
   border-radius: 6px;
 }
 ::-webkit-scrollbar-track {

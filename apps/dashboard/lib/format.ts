@@ -50,3 +50,11 @@ export function isRecent(iso: string | null, nowMs: number, windowMs: number): b
   if (!iso) return false;
   return nowMs - new Date(iso).getTime() <= windowMs;
 }
+
+/** Stable, human-readable reference code for a run (dashboard tracking id). */
+export function referenceCode(runId: string | null): string {
+  if (!runId) return "R-0000";
+  const hex = runId.replace(/[^0-9a-f]/gi, "").slice(0, 8) || "0";
+  const n = parseInt(hex, 16) || 0;
+  return `R-${1000 + (n % 9000)}`;
+}

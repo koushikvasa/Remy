@@ -1,5 +1,5 @@
 import type { ReferralRow } from "../lib/types";
-import { disciplineLabel, formatPhone, timeAgo } from "../lib/format";
+import { disciplineLabel, durationLabel, formatPhone, isRecent, timeAgo } from "../lib/format";
 import { DecisionPill, AssignedPill } from "./pills";
 
 /** The "mock EMR" — latest referrals as compact rows. */
@@ -11,12 +11,15 @@ export function ReferralQueue({
   nowMs: number;
 }) {
   return (
-    <section className="flex min-h-0 flex-col rounded-md border border-hairline bg-panel">
+    <section
+      aria-label="Referral queue"
+      className="flex min-h-[18rem] flex-col rounded-md border border-hairline bg-panel shadow-panel lg:min-h-0"
+    >
       <header className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
-        <h3 className="font-display text-sm font-semibold tracking-tight">
+        <h2 className="font-display text-sm font-semibold tracking-tight">
           Referral Queue
-        </h3>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
+        </h2>
+        <span className="font-mono text-[11px] uppercase tracking-wider text-muted">
           mock EMR
         </span>
       </header>
@@ -48,19 +51,32 @@ export function ReferralQueue({
             <div className="mt-1 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 truncate font-mono text-[11px] text-muted">
                 <span className="truncate">{r.payer_raw ?? "—"}</span>
-                <span className="text-hairline">·</span>
+                <span aria-hidden="true" className="text-muted/50">·</span>
                 <span>{r.zip ?? "—"}</span>
                 {r.reason_code && (
                   <>
-                    <span className="text-hairline">·</span>
+                    <span aria-hidden="true" className="text-muted/50">·</span>
                     <span className="text-muted/80">{r.reason_code}</span>
                   </>
                 )}
               </div>
-              <span className="shrink-0 font-mono text-[10px] text-muted">
+              <span className="shrink-0 font-mono text-[11px] text-muted">
                 {timeAgo(r.created_at, nowMs)}
               </span>
             </div>
+            {r.decision === "escalated" &&
+              (r.assigned_at ? (
+                <div className="mt-1 font-mono text-[11px] text-signal">
+                  ✓ coordinator responded in{" "}
+                  {durationLabel(r.created_at, new Date(r.assigned_at).getTime())}
+                </div>
+              ) : isRecent(r.created_at, nowMs, 600_000) ? (
+                <div className="mt-1 font-mono text-[11px] text-amber">
+                  <span aria-hidden="true">⏱ </span>awaiting coordinator{" "}
+                  {durationLabel(r.created_at, nowMs)}
+                </div>
+              ) : null)}
+
             {r.decision === "escalated" && r.callback_phone && (
               <div className="mt-1 font-mono text-[11px] text-amber">
                 ↳ callback {formatPhone(r.callback_phone)}

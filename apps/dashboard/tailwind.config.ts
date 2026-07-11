@@ -1,11 +1,20 @@
 import type { Config } from "tailwindcss";
 
 /**
- * Remy Command Center design tokens (P4 design brief).
- * After-hours dispatch console: near-black blue-grey, ONE signal-green accent,
- * amber for escalations, red for failures. Data is always mono.
+ * Remy Command Center design tokens (P4 design brief + theming pass).
+ *
+ * Colors are CSS variables (space-separated RGB channels) resolved through
+ * `rgb(var(--x) / <alpha-value>)`, so every `bg-signal/10`, `text-muted`,
+ * `border-hairline` keeps working AND flips between the dark and light themes.
+ * The channel values live in globals.css (`:root` = dark, `[data-theme=light]`).
+ *
+ * Still one signal-green accent, amber for escalations, red for failures.
+ * Data is always mono.
  */
+const withAlpha = (varName: string) => `rgb(var(${varName}) / <alpha-value>)`;
+
 const config: Config = {
+  darkMode: ["class", '[data-theme="dark"]'],
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -14,14 +23,15 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        base: "#0B0F14", // near-black blue-grey base
-        panel: "#11161D", // panel surface
-        hairline: "#1E2630", // hairline borders
-        ink: "#E8EDF2", // primary text
-        muted: "#8A94A3", // muted text
-        signal: "#3DDC84", // the ONE accent — accepted / live
-        amber: "#FFB454", // escalations only
-        danger: "#FF5C5C", // failures only
+        base: withAlpha("--color-base"), // page base
+        panel: withAlpha("--color-panel"), // panel surface
+        hairline: withAlpha("--color-hairline"), // hairline borders
+        ink: withAlpha("--color-ink"), // primary text
+        muted: withAlpha("--color-muted"), // secondary text
+        signal: withAlpha("--color-signal"), // the ONE accent — accepted / live
+        amber: withAlpha("--color-amber"), // escalations only
+        danger: withAlpha("--color-danger"), // failures only
+        focus: withAlpha("--color-focus"), // keyboard focus ring
       },
       fontFamily: {
         display: ["var(--font-display)", "system-ui", "sans-serif"],
@@ -32,12 +42,15 @@ const config: Config = {
         none: "0",
         sm: "4px",
         DEFAULT: "6px",
-        md: "6px",
-        lg: "6px",
+        md: "8px",
+        lg: "10px",
         full: "9999px",
       },
       boxShadow: {
-        glow: "0 0 0 1px rgba(61,220,132,0.35), 0 0 18px -6px rgba(61,220,132,0.45)",
+        // Accent glow — adapts to the active theme's signal color.
+        glow: "0 0 0 1px rgb(var(--color-signal) / 0.35), 0 0 18px -6px rgb(var(--color-signal) / 0.45)",
+        // Soft panel lift — carries the light theme, near-invisible on dark.
+        panel: "0 1px 2px rgb(var(--shadow-rgb) / 0.04), 0 6px 16px -8px rgb(var(--shadow-rgb) / 0.12)",
       },
     },
   },
