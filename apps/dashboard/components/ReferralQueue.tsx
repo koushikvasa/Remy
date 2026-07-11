@@ -1,6 +1,6 @@
 import type { ReferralRow } from "../lib/types";
 import { disciplineLabel, formatPhone, timeAgo } from "../lib/format";
-import { DecisionPill } from "./pills";
+import { DecisionPill, AssignedPill } from "./pills";
 
 /** The "mock EMR" — latest referrals as compact rows. */
 export function ReferralQueue({
@@ -39,7 +39,11 @@ export function ReferralQueue({
                   {disciplineLabel(r.discipline_needed)}
                 </span>
               </div>
-              <DecisionPill decision={r.decision} />
+              {r.decision === "escalated" && r.assigned_to ? (
+                <AssignedPill />
+              ) : (
+                <DecisionPill decision={r.decision} />
+              )}
             </div>
             <div className="mt-1 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 truncate font-mono text-[11px] text-muted">

@@ -32,10 +32,10 @@ function transcriptSummary(session: Session): string {
 export async function writeReferral(
   session: Session,
   decision: Decision
-): Promise<void> {
+): Promise<string | null> {
   const d = session.draft;
 
-  const { error } = await supabase()
+  const { data, error } = await supabase()
     .from("referrals")
     .insert({
       run_id: session.runId,
@@ -52,9 +52,13 @@ export async function writeReferral(
       reason_code: decision.reason_code,
       transcript_summary: transcriptSummary(session),
       callback_phone: session.callbackPhone,
-    });
+    })
+    .select("id")
+    .single();
 
-  if (error) {
-    console.error(`[referrals] writeReferral failed (run ${session.runId}): ${error.message}`);
+  if (error || !data) {
+    console.error(`[referrals] writeReferral failed (run ${session.runId}): ${error?.message}`);
+    return null;
   }
+  return data.id as string;
 }

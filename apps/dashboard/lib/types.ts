@@ -39,6 +39,8 @@ export interface ReferralRow {
   decision: "accepted" | "escalated" | "declined" | null;
   reason_code: string | null;
   callback_phone: string | null;
+  assigned_to: string | null;
+  assigned_at: string | null;
   created_at: string;
 }
 

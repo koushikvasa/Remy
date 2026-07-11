@@ -7,6 +7,10 @@ import { handleTurn } from "./router";
 import { finalizeRun, logEvent } from "./telemetry";
 import { lookupCaller } from "./tools/callerLookup";
 import { buildGreeting, twimlConnect } from "./twiml";
+import {
+  coordinatorCallTwiml,
+  coordinatorChoiceTwiml,
+} from "./coordinatorCall";
 
 /**
  * Agent server — HTTP webhook + ConversationRelay WebSocket (REMY_SPEC.md §9).
@@ -55,6 +59,22 @@ server.post("/twiml", async (req, reply) => {
   const wssUrl = `wss://${host}/ws`;
 
   reply.type("text/xml").send(twimlConnect({ wssUrl, greeting, sourceId }));
+});
+
+// Outbound-callout TwiML: Twilio fetches this when the coordinator answers.
+// Brief + <Gather> a single digit. PHI-safe, no LLM on this path.
+server.post("/coordinator-call", async (req, reply) => {
+  const referralId = (req.query as Record<string, string>)?.referral_id ?? "";
+  const xml = await coordinatorCallTwiml(referralId);
+  reply.type("text/xml").send(xml);
+});
+
+// Coordinator pressed a digit (or timed out): 1 = take, else pass.
+server.post("/coordinator-choice", async (req, reply) => {
+  const referralId = (req.query as Record<string, string>)?.referral_id ?? "";
+  const digits = ((req.body ?? {}) as Record<string, string>).Digits ?? "";
+  const xml = await coordinatorChoiceTwiml(referralId, digits);
+  reply.type("text/xml").send(xml);
 });
 
 // ConversationRelay socket.

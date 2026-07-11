@@ -13,6 +13,7 @@ import { LiveCallPanel } from "./LiveCallPanel";
 import { EmptyState } from "./EmptyState";
 import { ReferralQueue } from "./ReferralQueue";
 import { EventFeed } from "./EventFeed";
+import { EconomicsStrip } from "./EconomicsStrip";
 
 // How long a finished call stays in the hero before returning to the empty state.
 const RECENT_WINDOW_MS = 120_000;
@@ -120,12 +121,20 @@ export function CommandCenter() {
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "referrals" },
+        { event: "*", schema: "public", table: "referrals" },
         (payload) => {
           const ref = payload.new as ReferralRow;
-          setReferrals((prev) =>
-            prev.some((r) => r.id === ref.id) ? prev : [ref, ...prev]
-          );
+          if (!ref?.id) return;
+          // INSERT prepends; UPDATE (e.g. assignment) replaces in place.
+          setReferrals((prev) => {
+            const idx = prev.findIndex((r) => r.id === ref.id);
+            if (idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = ref;
+              return copy;
+            }
+            return [ref, ...prev];
+          });
         }
       )
       .subscribe();
@@ -179,6 +188,8 @@ export function CommandCenter() {
   return (
     <main className="mx-auto flex h-screen max-w-[1600px] flex-col gap-4 p-4">
       <TopBar activeCount={activeCount} />
+
+      <EconomicsStrip referrals={referrals} runs={runs} />
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="min-h-0 lg:col-span-2">

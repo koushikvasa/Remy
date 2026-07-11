@@ -139,3 +139,18 @@ export function deriveStepIndex(run: RunRow, events: RunEventRow[]): number {
 export function isEscalationReason(decision: DecisionView | null): boolean {
   return decision?.decision !== "accept";
 }
+
+/** Coordinator callout status from the run's events (P6): called → assigned. */
+export function deriveEscalationStatus(
+  events: RunEventRow[]
+): "called" | "assigned" | null {
+  const evs = sortedBySeq(events);
+  if (evs.some((e) => e.payload && e.payload.event === "assigned")) return "assigned";
+  if (
+    evs.some(
+      (e) => e.tool_name === "callout" && e.payload && e.payload.event === "callout" && e.payload.placed
+    )
+  )
+    return "called";
+  return null;
+}

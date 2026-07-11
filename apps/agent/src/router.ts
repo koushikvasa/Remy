@@ -13,6 +13,7 @@ import { answerOffscript } from "./agents/offscript";
 import { runFitCheck } from "./agents/fitchecker";
 import { decide, wordDecision, staticEscalation } from "./agents/decider";
 import { writeReferral } from "./referrals";
+import { notifyCoordinatorOfEscalation } from "./escalation";
 import { logEvent, finalizeRun } from "./telemetry";
 
 /**
@@ -308,7 +309,7 @@ async function closingTurn(
   session.callbackPhone = digits.length >= 7 ? digits : userText.trim();
   session.awaitingCallback = false;
 
-  await writeReferral(session, session.decision);
+  const referralId = await writeReferral(session, session.decision);
   await finalizeRun(session.runId, "escalated");
   session.finalized = true;
 
@@ -318,6 +319,15 @@ async function closingTurn(
     subAgent: "system",
     payload: { event: "escalation_closed", callback_captured: true },
   });
+
+  // P6: call the on-call coordinator. Safe if voice/coordinators are unavailable.
+  if (referralId) {
+    await notifyCoordinatorOfEscalation({
+      runId: session.runId,
+      referralId,
+      reasonCode: session.decision.reason_code,
+    });
+  }
 
   const reply =
     "Thanks — I've logged everything and our coordinator will call you shortly. Take care.";

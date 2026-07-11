@@ -38,3 +38,13 @@ export function DecisionPill({ decision }: { decision: string | null }) {
     </span>
   );
 }
+
+/** Assigned = escalated referral a coordinator took. Green OUTLINE (no fill),
+ * distinct from accepted's filled-green pill. */
+export function AssignedPill() {
+  return (
+    <span className="inline-flex items-center rounded border border-signal bg-transparent px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-signal">
+      assigned
+    </span>
+  );
+}

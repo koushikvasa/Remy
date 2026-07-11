@@ -25,7 +25,7 @@ export function buildGreeting(source: CallerSource | null): string {
   return `${AGENCY} referral line, this is Remy — I can take your referral right now.`;
 }
 
-function escapeXml(s: string): string {
+export function escapeXml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

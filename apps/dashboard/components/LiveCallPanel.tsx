@@ -5,6 +5,7 @@ import {
   deriveChips,
   deriveDecision,
   deriveDraft,
+  deriveEscalationStatus,
   deriveStepIndex,
 } from "../lib/runState";
 import { durationLabel, formatPhone } from "../lib/format";
@@ -29,6 +30,7 @@ export function LiveCallPanel({
   const chips = deriveChips(events);
   const decision = deriveDecision(events);
   const stepIndex = deriveStepIndex(run, events);
+  const escStatus = deriveEscalationStatus(events);
 
   const terminalStatus =
     run.status === "active" ? null : (run.status as "completed" | "escalated" | "failed");
@@ -87,6 +89,15 @@ export function LiveCallPanel({
         ) : (
           <div className="rounded border border-dashed border-hairline px-4 py-3 font-mono text-xs text-muted">
             Awaiting decision…
+          </div>
+        )}
+
+        {escStatus && (
+          <div className="mt-2 font-mono text-[11px] uppercase tracking-wider text-signal">
+            Coordinator called
+            {escStatus === "assigned" && (
+              <span className="text-signal"> → assigned</span>
+            )}
           </div>
         )}
       </div>
