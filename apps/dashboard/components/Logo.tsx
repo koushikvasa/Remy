@@ -3,14 +3,14 @@
 import { useState } from "react";
 
 /**
- * Remy brand logo for the header. Renders /remy-logo.png (drop the file into
- * apps/dashboard/public/). The image sits on a cream plate matching the logo's
- * own background so any surrounding whitespace reads as intentional in the dark
- * theme and blends into the cream light theme; object-cover trims the banner's
- * vertical margins. If the file is missing, it falls back to a styled wordmark
- * so the header is never broken.
+ * Remy brand logo for the header. Renders the tightly-cropped, transparent
+ * /remy-logo.png at its natural aspect. The wordmark is deep navy, so the logo
+ * sits on a cream plate (matching its original artwork) to stay readable on the
+ * dark theme and to blend into the cream light theme. Falls back to a styled
+ * wordmark if the image is missing, so the header is never broken.
  *
- * Responsive: the plate scales by breakpoint; the wordmark fallback scales too.
+ * Responsive: the logo scales by breakpoint via its height (width follows the
+ * image aspect).
  */
 export function Logo() {
   const [failed, setFailed] = useState(false);
@@ -24,12 +24,12 @@ export function Logo() {
   }
 
   return (
-    <span className="inline-flex overflow-hidden rounded-md border border-hairline bg-[#F2F0EA] shadow-sm">
+    <span className="inline-flex items-center rounded-md border border-hairline bg-[#F2F0EA] px-2.5 py-1.5 shadow-sm">
       <img
         src="/remy-logo.png"
         alt="Remy — 24/7 Referral Acceptance"
         onError={() => setFailed(true)}
-        className="h-9 w-[128px] object-cover object-center sm:h-10 sm:w-[150px]"
+        className="h-9 w-auto sm:h-11"
       />
     </span>
   );
