@@ -1,5 +1,6 @@
 # Agent server image (Railway). Build context = repo root.
-FROM node:20-slim
+# Node 22+ required: @supabase/supabase-js (realtime-js) needs native WebSocket.
+FROM node:22-slim
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
