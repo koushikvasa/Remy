@@ -21,6 +21,15 @@ function getArg(flag: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+function percentile(values: number[], p: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.ceil((p / 100) * sorted.length) - 1
+  );
+  return sorted[Math.max(0, idx)];
+}
+
 const FIELD_LABELS: Record<keyof ReferralDraft, string> = {
   patient_first_initial: "initial",
   patient_age: "age",
@@ -57,6 +66,8 @@ async function main(): Promise<void> {
   const rl = createInterface({ input: process.stdin });
   process.stdout.write("\nyou> ");
 
+  const latencies: number[] = [];
+
   for await (const raw of rl) {
     const text = raw.trim();
     if (!text) {
@@ -66,6 +77,7 @@ async function main(): Promise<void> {
     if (text === "exit" || text === "quit") break;
 
     const res = await handleTurn(session, text);
+    if (typeof res.latencyMs === "number") latencies.push(res.latencyMs);
     console.log(`\nRemy> ${res.reply}`);
     printDraft(session.draft);
     if (session.decision) {
@@ -74,9 +86,9 @@ async function main(): Promise<void> {
       );
     }
     console.log(
-      `   [stage ${session.stage} · conf ${session.lastConfidence.toFixed(2)}${
-        res.escalated ? " · ESCALATED" : ""
-      }]`
+      `   [stage ${session.stage} · conf ${session.lastConfidence.toFixed(2)} · turn ${
+        res.latencyMs ?? "?"
+      }ms${res.escalated ? " · ESCALATED" : ""}]`
     );
 
     if (res.done) {
@@ -90,6 +102,13 @@ async function main(): Promise<void> {
   rl.close();
   if (!session.finalized) {
     await finalizeRun(session.runId, "completed");
+  }
+
+  if (latencies.length > 0) {
+    console.log(
+      `\nturn latency (n=${latencies.length}): p50 ${percentile(latencies, 50)}ms · ` +
+        `p95 ${percentile(latencies, 95)}ms · max ${Math.max(...latencies)}ms`
+    );
   }
   process.exit(0);
 }

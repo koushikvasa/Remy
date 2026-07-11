@@ -42,6 +42,11 @@ export function askForField(field: keyof ReferralDraft): string {
   return FIELD_QUESTIONS[field];
 }
 
+/** Gentler re-ask after a turn we couldn't parse. */
+export function politeReprompt(field: keyof ReferralDraft): string {
+  return `Sorry, I didn't quite catch that. ${FIELD_QUESTIONS[field]}`;
+}
+
 /** "No problem — what should I fix?" after a failed readback. */
 export function correctionPrompt(): string {
   return "No problem — what should I correct?";

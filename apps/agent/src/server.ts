@@ -25,6 +25,7 @@ import { buildGreeting, twimlConnect } from "./twiml";
  */
 
 const ECHO_MODE = process.env.REMY_ECHO === "1";
+const AUTO_END = process.env.REMY_AUTO_END === "1";
 const ESCALATION_LINE =
   "Let me connect you with our intake coordinator to make sure nothing is lost.";
 
@@ -68,6 +69,35 @@ server.get("/ws", { websocket: true }, (socket) => {
     }
   };
 
+  // Auto-hangup (REMY_AUTO_END): after the final line, end once TTS has played.
+  // Primary signal is CR's tokens-played event; a length-based delay is the
+  // fallback (sized to the spoken text so it never clips). Barge-in cancels it.
+  let pendingEnd: NodeJS.Timeout | null = null;
+  const clearPendingEnd = () => {
+    if (pendingEnd) {
+      clearTimeout(pendingEnd);
+      pendingEnd = null;
+    }
+  };
+  const endNow = () => {
+    clearPendingEnd();
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "end",
+          handoffData: session ? JSON.stringify({ runId: session.runId }) : "",
+        })
+      );
+    } catch (err) {
+      server.log.error(err);
+    }
+  };
+  const armEnd = (text: string) => {
+    clearPendingEnd();
+    const delayMs = Math.min(8000, Math.max(3000, text.length * 60));
+    pendingEnd = setTimeout(endNow, delayMs);
+  };
+
   // Process messages strictly in arrival order: setup must fully complete
   // (session created) before the first prompt is handled.
   let chain: Promise<void> = Promise.resolve();
@@ -104,11 +134,14 @@ server.get("/ws", { websocket: true }, (socket) => {
           if (!session) return;
           const res = await handleTurn(session, text);
           sendText(res.reply, true);
+          if (res.done && AUTO_END) armEnd(res.reply);
           break;
         }
 
         case "interrupt": {
-          // Log the event only — never the caller's utterance (PHI).
+          // Barge-in: the caller cut in, so cancel any pending auto-hangup and
+          // log it. Never log the caller's utterance (PHI).
+          clearPendingEnd();
           if (session) {
             await logEvent({
               runId: session.runId,
@@ -117,6 +150,12 @@ server.get("/ws", { websocket: true }, (socket) => {
               payload: { event: "interrupt" },
             });
           }
+          break;
+        }
+
+        case "info": {
+          // tokens-played (TTS finished) → end now if an auto-hangup is armed.
+          if (AUTO_END && pendingEnd) endNow();
           break;
         }
 
@@ -147,6 +186,7 @@ server.get("/ws", { websocket: true }, (socket) => {
   }
 
   socket.on("close", async () => {
+    clearPendingEnd();
     if (session && !session.finalized) {
       await finalizeRun(session.runId, "completed");
       session.finalized = true;

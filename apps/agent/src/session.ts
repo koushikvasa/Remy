@@ -28,6 +28,8 @@ export interface Session {
   payerMatchedId: string | null;
   awaitingCallback: boolean;
   callbackPhone: string | null;
+  // robustness (P5): consecutive turns that yielded no new field
+  unparseableStreak: number;
 }
 
 // GREETING is delivered via TwiML welcomeGreeting on a real call; the simulator
@@ -79,5 +81,6 @@ export async function startSession(input: StartSessionInput): Promise<Session> {
     payerMatchedId: null,
     awaitingCallback: false,
     callbackPhone: null,
+    unparseableStreak: 0,
   };
 }

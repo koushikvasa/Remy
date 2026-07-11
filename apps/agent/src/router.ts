@@ -2,35 +2,38 @@ import { ReferralDraft } from "@remy/shared";
 import { Session } from "./session";
 import { extract, DRAFT_FIELDS, ModelError } from "./agents/extractor";
 import {
-  askClarification,
   askForField,
   confirmPrompt,
   correctionPrompt,
+  politeReprompt,
   readback,
   ESCALATION_LINE,
 } from "./agents/responder";
+import { answerOffscript } from "./agents/offscript";
 import { runFitCheck } from "./agents/fitchecker";
-import { decide, wordDecision } from "./agents/decider";
+import { decide, wordDecision, staticEscalation } from "./agents/decider";
 import { writeReferral } from "./referrals";
 import { logEvent, finalizeRun } from "./telemetry";
 
 /**
  * router.ts — the per-call stage machine (REMY_SPEC.md §7).
  *
- * GREETING → COLLECTING → READBACK → DECIDING → CLOSING. On a confirmed readback
- * the FitChecker runs the three tools, the deterministic decide() gate produces
- * the decision, and a referrals row is written on close:
- *   - accept  → confirm, write referrals(accepted), run completed
- *   - escalate → capture a callback number, write referrals(escalated), run escalated
+ * GREETING → COLLECTING → READBACK → DECIDING → CLOSING. Confirmed readback runs
+ * FitChecker + the deterministic decide() gate, then writes a referrals row.
  *
- * Every turn is wrapped so a model failure never leaves dead air (rule 5): the
- * caller hears the static escalation line and the run is marked failed.
+ * P5 additions (COLLECTING branch only, no new stage): off-script coverage
+ * questions are answered from the tools then collection resumes; an explicit
+ * human request or three unparseable turns escalate; one missing field is asked
+ * per turn. Every turn is timed (prompt received → reply ready) and logged.
+ *
+ * Every turn is wrapped so a model failure never leaves dead air (rule 5).
  */
 
 export interface TurnResult {
   reply: string;
-  done: boolean; // conversation over (completed or escalated)
+  done: boolean; // conversation over (completed or escalated closed)
   escalated?: boolean;
+  latencyMs?: number; // total turn latency, stamped by handleTurn
 }
 
 function missingFields(draft: ReferralDraft): (keyof ReferralDraft)[] {
@@ -43,30 +46,47 @@ const NEGATIVE =
   /\b(no|nope|not quite|not right|wrong|incorrect|change|fix|actually|isn'?t)\b/i;
 const DONE =
   /(that'?s (everything|all|it)|that is (all|everything)|nothing else|all set|i'?m done|we'?re done)/i;
+const HUMAN_REQUEST =
+  /(speak|talk|connect|transfer|get) (me )?(to )?(a |an |the )?(human|person|someone|representative|rep|agent|coordinator|operator)|real person|human being/i;
 
 export async function handleTurn(
   session: Session,
   userText: string
 ): Promise<TurnResult> {
+  const t0 = Date.now(); // prompt received
   session.messages.push({ role: "user", content: userText });
 
+  let res: TurnResult;
   try {
-    switch (session.stage) {
-      case "GREETING":
-        session.stage = "COLLECTING";
-        return await collectTurn(session, userText);
-      case "COLLECTING":
-        return await collectTurn(session, userText);
-      case "READBACK":
-        return await readbackTurn(session, userText);
-      case "CLOSING":
-        return await closingTurn(session, userText);
-      default:
-        // DECIDING is transient (resolved within the confirming turn).
-        return { reply: "Thanks — we're all set here.", done: true };
-    }
+    res = await route(session, userText);
   } catch (err) {
-    return await escalate(session, err);
+    res = await escalate(session, err);
+  }
+
+  res.latencyMs = Date.now() - t0; // reply ready
+  await logEvent({
+    runId: session.runId,
+    stage: session.stage,
+    subAgent: "router",
+    toolName: "turn",
+    latencyMs: res.latencyMs,
+  });
+  return res;
+}
+
+async function route(session: Session, userText: string): Promise<TurnResult> {
+  switch (session.stage) {
+    case "GREETING":
+      session.stage = "COLLECTING";
+      return collectTurn(session, userText);
+    case "COLLECTING":
+      return collectTurn(session, userText);
+    case "READBACK":
+      return readbackTurn(session, userText);
+    case "CLOSING":
+      return closingTurn(session, userText);
+    default:
+      return { reply: "Thanks — we're all set here.", done: true };
   }
 }
 
@@ -74,6 +94,32 @@ async function collectTurn(
   session: Session,
   userText: string
 ): Promise<TurnResult> {
+  // 1. Explicit request for a human → escalate.
+  if (HUMAN_REQUEST.test(userText)) {
+    return escalateToHuman(session, "CALLER_REQUESTED_HUMAN");
+  }
+
+  // 2. Off-script coverage question → answer from tools, then resume collection.
+  const off = await answerOffscript(userText);
+  if (off) {
+    session.unparseableStreak = 0;
+    // Keep the coverage question OUT of the extractor's context — otherwise
+    // "do you take Humana?" gets misread as the patient's payer. Drop the
+    // just-pushed question and don't add the answer to the transcript.
+    session.messages.pop();
+    const missing = missingFields(session.draft);
+    const reply =
+      missing.length > 0 ? `${off.answer} ${askForField(missing[0]!)}` : off.answer;
+    await logEvent({
+      runId: session.runId,
+      stage: "COLLECTING",
+      subAgent: "responder",
+      payload: { kind: "offscript_answer", topic: off.kind },
+    });
+    return { reply, done: false };
+  }
+
+  // 3. Normal extraction.
   const t0 = Date.now();
   const out = await extract(session.draft, session.messages);
   const latencyMs = Date.now() - t0;
@@ -98,6 +144,7 @@ async function collectTurn(
   const ready = missing.length === 0 || DONE.test(userText);
 
   if (ready) {
+    session.unparseableStreak = 0;
     session.stage = "READBACK";
     const reply = readback(session.draft);
     session.messages.push({ role: "assistant", content: reply });
@@ -110,16 +157,28 @@ async function collectTurn(
     return { reply, done: false };
   }
 
-  const reply = out.needs_clarification
-    ? askClarification(out.needs_clarification)
-    : askForField(missing[0]!);
+  // Not ready — track whether this turn produced anything.
+  if (out.updated_fields.length > 0) {
+    session.unparseableStreak = 0;
+  } else {
+    session.unparseableStreak += 1;
+  }
 
+  // Third strike of nothing parseable → offer a human.
+  if (session.unparseableStreak >= 3) {
+    return escalateToHuman(session, "CALLER_REQUESTED_HUMAN");
+  }
+
+  // Ask for exactly ONE missing field this turn.
+  const field = missing[0]!;
+  const reply =
+    session.unparseableStreak === 2 ? politeReprompt(field) : askForField(field);
   session.messages.push({ role: "assistant", content: reply });
   await logEvent({
     runId: session.runId,
     stage: "COLLECTING",
     subAgent: "responder",
-    payload: { kind: "clarify", asked: out.needs_clarification ? "clarification" : missing[0] },
+    payload: { kind: "clarify", asked: field, streak: session.unparseableStreak },
   });
   return { reply, done: false };
 }
@@ -140,10 +199,10 @@ async function readbackTurn(
       subAgent: "system",
       payload: { event: "readback_confirmed" },
     });
-    return await decideTurn(session);
+    return decideTurn(session);
   }
 
-  // Rejected → back to COLLECTING to capture the correction.
+  // Rejected → back to COLLECTING for a targeted correction.
   if (no) {
     session.stage = "COLLECTING";
     const reply = correctionPrompt();
@@ -166,7 +225,6 @@ async function readbackTurn(
 async function decideTurn(session: Session): Promise<TurnResult> {
   const t0 = Date.now();
 
-  // FitChecker: three DB tools → FitResult. Deterministic decide() gate.
   const { fit, payerMatchedId } = await runFitCheck(session.draft, session.runId);
   session.fit = fit;
   session.payerMatchedId = payerMatchedId;
@@ -187,7 +245,6 @@ async function decideTurn(session: Session): Promise<TurnResult> {
       decision: decision.decision,
       reason_code: decision.reason_code,
       all_green: fit.all_green,
-      // PHI-safe (initial + age only); the dashboard shows it under the banner.
       spoken_reason: decision.spoken_reason,
     },
   });
@@ -202,7 +259,6 @@ async function decideTurn(session: Session): Promise<TurnResult> {
     return { reply: decision.spoken_reason, done: true };
   }
 
-  // escalate / decline → capture a callback number, then write on close.
   session.stage = "CLOSING";
   session.awaitingCallback = true;
   return { reply: decision.spoken_reason, done: false, escalated: true };
@@ -235,6 +291,30 @@ async function closingTurn(
     "Thanks — I've logged everything and our coordinator will call you shortly. Take care.";
   session.messages.push({ role: "assistant", content: reply });
   return { reply, done: true };
+}
+
+/**
+ * Router-level escalation (human request / repeated unparseable turns). Always
+ * escalate, never accept — decide() remains the only path to an accept (rule 1).
+ */
+async function escalateToHuman(
+  session: Session,
+  reasonCode: Parameters<typeof staticEscalation>[0]
+): Promise<TurnResult> {
+  const decision = staticEscalation(reasonCode);
+  session.decision = decision;
+  session.stage = "CLOSING";
+  session.awaitingCallback = true;
+  session.unparseableStreak = 0;
+
+  await logEvent({
+    runId: session.runId,
+    stage: "CLOSING",
+    subAgent: "decider",
+    payload: { decision: "escalate", reason_code: reasonCode, source: "router" },
+  });
+  session.messages.push({ role: "assistant", content: decision.spoken_reason });
+  return { reply: decision.spoken_reason, done: false, escalated: true };
 }
 
 async function escalate(session: Session, err: unknown): Promise<TurnResult> {

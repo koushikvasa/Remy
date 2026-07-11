@@ -66,10 +66,23 @@ const DISCIPLINE_WORDS: Record<string, string> = {
 
 const WORDING_SYSTEM = `You are Remy, a warm, efficient voice agent on a home-health referral phone call.
 The decision has ALREADY been made by a deterministic gate. You do NOT decide anything — you only word what Remy says out loud.
-Return ONE or TWO short spoken sentences, plain text (no quotes, no lists).
-- If the decision is ACCEPT: warmly confirm we're taking the referral and that a coordinator will call the patient within the hour.
-- If the decision is ESCALATE: do NOT fake a yes and do NOT promise acceptance. Briefly acknowledge, say a coordinator will follow up, and ASK for the best callback number.
-Never state a patient's full name — reference only initial and age. Keep it natural for speech.`;
+Keep it SHORT and natural for speech — one sentence for accept, at most two for escalate. No quotes, no lists.
+- ACCEPT: warmly confirm we're taking the referral and that a coordinator will call the patient within the hour.
+- ESCALATE: do NOT fake a yes or promise acceptance. Briefly acknowledge, say a coordinator will follow up, and ASK for the best callback number.
+Never state a patient's full name — reference only initial and age.`;
+
+/**
+ * A router-level escalation (caller asked for a human, repeated unparseable
+ * turns, etc.). This is NOT the fit gate — it only ever escalates, never
+ * accepts, so hard rule 1 (an accept requires decide()) is preserved.
+ */
+export function staticEscalation(reasonCode: ReasonCode): Decision {
+  return Decision.parse({
+    decision: "escalate",
+    reason_code: reasonCode,
+    spoken_reason: STATIC_SPOKEN[reasonCode],
+  });
+}
 
 function contextLine(gate: Gate, draft: ReferralDraft, fit: FitResult): string {
   const discipline = draft.discipline_needed
