@@ -11,7 +11,7 @@ export function ReferralQueue({
   nowMs: number;
 }) {
   return (
-    <section className="flex min-h-0 flex-col rounded-md border border-hairline bg-panel">
+    <section className="flex min-h-[18rem] flex-col rounded-md border border-hairline bg-panel lg:min-h-0">
       <header className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
         <h3 className="font-display text-sm font-semibold tracking-tight">
           Referral Queue

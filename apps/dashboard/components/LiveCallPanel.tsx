@@ -41,23 +41,25 @@ export function LiveCallPanel({
   const contact = source?.contact_name ?? null;
 
   return (
-    <section className="flex h-full flex-col gap-5 rounded-md border border-hairline bg-panel p-5">
+    <section className="flex h-full flex-col gap-4 rounded-md border border-hairline bg-panel p-4 sm:gap-5 sm:p-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-xl font-semibold tracking-tight text-ink">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate font-display text-lg font-semibold tracking-tight text-ink sm:text-xl">
               {orgName}
             </h2>
-            {contact && <span className="text-sm text-muted">· {contact}</span>}
+            {contact && (
+              <span className="shrink-0 text-sm text-muted">· {contact}</span>
+            )}
           </div>
           <div className="mt-1 font-mono text-xs text-muted">
             {formatPhone(run.caller_phone)}
           </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-2">
           <StatusPill status={run.status} />
-          <div className="font-mono text-2xl tabular-nums text-ink">
+          <div className="font-mono text-xl tabular-nums text-ink sm:text-2xl">
             {durationLabel(run.started_at, endMs)}
           </div>
         </div>

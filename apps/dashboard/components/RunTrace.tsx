@@ -104,8 +104,11 @@ export function RunTrace({ runId }: { runId: string }) {
   }, [runId]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 p-4">
-      <header className="flex items-center justify-between px-1">
+    <main
+      id="main"
+      className="mx-auto flex min-h-[100dvh] max-w-[1600px] flex-col gap-3 overflow-x-hidden p-3 sm:gap-4 sm:p-4"
+    >
+      <header className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-baseline gap-3">
           <Link href="/" className="font-mono text-xs text-muted hover:text-ink">
             ← Command Center
@@ -114,7 +117,7 @@ export function RunTrace({ runId }: { runId: string }) {
             Decision Trace
           </span>
         </div>
-        <span className="font-mono text-[11px] text-muted">{runId}</span>
+        <span className="truncate font-mono text-[11px] text-muted">{runId}</span>
       </header>
 
       {notFound && (

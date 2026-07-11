@@ -199,14 +199,14 @@ export function CommandCenter() {
     <main
       id="main"
       aria-label="Remy Command Center"
-      className="mx-auto flex h-screen max-w-[1600px] flex-col gap-4 p-4"
+      className="mx-auto flex min-h-[100dvh] max-w-[1600px] flex-col gap-3 overflow-x-hidden p-3 sm:gap-4 sm:p-4 lg:h-screen lg:min-h-0 lg:overflow-hidden"
     >
       <TopBar activeCount={activeCount} />
 
       <EconomicsStrip referrals={referrals} runs={runs} />
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="min-h-0 lg:col-span-2">
+      <div className="grid flex-1 grid-cols-1 gap-3 sm:gap-4 lg:min-h-0 lg:grid-cols-3">
+        <div className="min-h-[60vh] lg:col-span-2 lg:min-h-0">
           {showHero && focusRun ? (
             <LiveCallPanel
               run={focusRun}
@@ -219,7 +219,7 @@ export function CommandCenter() {
           )}
         </div>
 
-        <div className="grid min-h-0 grid-rows-2 gap-4">
+        <div className="flex flex-col gap-3 sm:gap-4 lg:grid lg:min-h-0 lg:grid-rows-2">
           <ReferralQueue referrals={referrals} nowMs={nowMs} />
           <EventFeed events={focusEvents} />
         </div>
