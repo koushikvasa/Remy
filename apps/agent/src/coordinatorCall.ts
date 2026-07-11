@@ -51,13 +51,28 @@ function unavailable(): string {
   return xml(say("That one's already been handled — thanks so much. Bye now.") + "<Hangup/>");
 }
 
+// A referral is callable to a coordinator whether we accepted it (confirm the
+// case) or escalated it (ask a person to take it).
+function callable(decision: string | null): boolean {
+  return decision === "accepted" || decision === "escalated";
+}
+
 function brief(r: EscalatedReferral): string {
   const discipline = DISCIPLINE_WORDS[r.discipline_needed ?? ""] ?? "home health";
   const payer = r.payer_raw ?? "an unspecified plan";
+  const age = r.patient_age ?? "new";
+
+  if (r.decision === "accepted") {
+    return (
+      `Hi, it's Remy from Sunrise Home Health — good news. I've just accepted a new referral: ` +
+      `a ${age}-year-old needing ${discipline}, on ${payer}. Can you take the case?`
+    );
+  }
+
   const snippet = REASON_SNIPPET[r.reason_code ?? ""] ?? "I'd just like a person to look";
   return (
     `Hi, it's Remy from Sunrise Home Health — sorry to interrupt. ` +
-    `I've got a referral I couldn't clear automatically: a ${r.patient_age ?? "new"}-year-old ` +
+    `I've got a referral I couldn't clear automatically: a ${age}-year-old ` +
     `needing ${discipline}, on ${payer} — ${snippet}.`
   );
 }
@@ -65,7 +80,7 @@ function brief(r: EscalatedReferral): string {
 /** TwiML fetched when the coordinator answers: warm brief + gather one digit. */
 export async function coordinatorCallTwiml(referralId: string): Promise<string> {
   const r = await getEscalatedReferral(referralId);
-  if (!r || r.decision !== "escalated") return unavailable();
+  if (!r || !callable(r.decision)) return unavailable();
 
   const action = `/coordinator-choice?referral_id=${encodeURIComponent(referralId)}`;
   return xml(
@@ -84,7 +99,7 @@ export async function coordinatorChoiceTwiml(
   digits: string
 ): Promise<string> {
   const r = await getEscalatedReferral(referralId);
-  if (!r || r.decision !== "escalated") return unavailable();
+  if (!r || !callable(r.decision)) return unavailable();
 
   if (digits === "1" && r.assigned_to) {
     return xml(say("Looks like that one's already been picked up — thanks, and take care.") + "<Hangup/>");

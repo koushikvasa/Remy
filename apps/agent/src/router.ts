@@ -347,11 +347,7 @@ async function decideTurn(session: Session): Promise<TurnResult> {
   session.messages.push({ role: "assistant", content: decision.spoken_reason });
 
   if (decision.decision === "accept") {
-    session.stage = "CLOSING";
-    const referralId = await writeReferral(session, decision);
-    await finalizeRun(session.runId, "completed");
-    session.finalized = true;
-    session.referenceCode = referralId ? referralShortCode(referralId) : null;
+    await persistAndCallout(session, "completed");
     // Weave in the reference code + invite continuation. done:false so the call
     // stays open — auto-end must NEVER fire straight after the decision line.
     const codePart = session.referenceCode ? ` Your reference is ${session.referenceCode}.` : "";
@@ -367,14 +363,15 @@ async function decideTurn(session: Session): Promise<TurnResult> {
 }
 
 /**
- * Finish an escalation: use the caller's number as the callback, write the
- * referral, and fire the coordinator callout (fire-and-forget, idempotent).
- * Remy never asks for a callback number (P7 demo: caller-ID = callback).
+ * Persist the referral (caller-ID = callback) and fire the coordinator callout —
+ * for BOTH accepts (confirm the case, then report back to the hospital) and
+ * escalations. Fire-and-forget + idempotent; Remy never asks for a callback
+ * number. Returns the referral id.
  */
-async function escalateNow(
+async function persistAndCallout(
   session: Session,
-  spokenReason: string
-): Promise<TurnResult> {
+  status: "completed" | "escalated"
+): Promise<string | null> {
   session.stage = "CLOSING";
 
   const cb = normalizeCallback(session.callerPhone);
@@ -383,14 +380,18 @@ async function escalateNow(
   const referralId = await writeReferral(session, session.decision!);
   session.escalatedReferralId = referralId;
   session.referenceCode = referralId ? referralShortCode(referralId) : null;
-  await finalizeRun(session.runId, "escalated");
+  await finalizeRun(session.runId, status);
   session.finalized = true;
 
   await logEvent({
     runId: session.runId,
     stage: "CLOSING",
     subAgent: "system",
-    payload: { event: "escalation_closed", callback_source: "caller_id" },
+    payload: {
+      event: "referral_closed",
+      decision: session.decision!.decision,
+      callback_source: "caller_id",
+    },
   });
 
   if (referralId) {
@@ -401,6 +402,14 @@ async function escalateNow(
     });
   }
 
+  return referralId;
+}
+
+async function escalateNow(
+  session: Session,
+  spokenReason: string
+): Promise<TurnResult> {
+  await persistAndCallout(session, "escalated");
   return { reply: `${spokenReason} Anything else I can help with?`, done: false, escalated: true };
 }
 
@@ -504,11 +513,8 @@ function closeWarmly(session: Session): TurnResult {
  * fire already ran. Call this from the WS close handler.
  */
 export async function ensureEscalationCallout(session: Session): Promise<void> {
-  if (
-    session.decision?.decision === "escalate" &&
-    session.callbackPhone &&
-    session.escalatedReferralId
-  ) {
+  // Covers accepts and escalations — any closed referral with a callback number.
+  if (session.decision && session.callbackPhone && session.escalatedReferralId) {
     await notifyCoordinatorOfEscalation({
       runId: session.runId,
       referralId: session.escalatedReferralId,
