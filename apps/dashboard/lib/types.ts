@@ -52,4 +52,16 @@ export interface SourceRow {
   org_type: string | null;
 }
 
+export type AssistantStatus = "available" | "busy" | "off";
+
+export interface MedicalAssistantRow {
+  id: string;
+  code: string; // human-readable staff ID, e.g. MA-1042
+  name: string;
+  specialization: string;
+  location: string;
+  status: AssistantStatus | string;
+  availability: string | null;
+}
+
 export type { ReferralDraft };
